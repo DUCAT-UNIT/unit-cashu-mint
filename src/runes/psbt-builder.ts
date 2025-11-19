@@ -42,6 +42,7 @@ export class RunesPsbtBuilder {
     runeUtxo: RuneUtxo,
     satUtxo: SatUtxo,
     taprootAddress: string,
+    taprootInternalPubkey: string,
     segwitAddress: string,
     recipientAddress: string,
     amountInRunes: bigint
@@ -50,6 +51,9 @@ export class RunesPsbtBuilder {
     const psbt = new bitcoin.Psbt({ network })
 
     try {
+      // UNIT has 2 decimal places, so multiply by 100 to get the raw rune amount
+      const runeAmount = amountInRunes * 100n
+
       // Calculate transaction economics
       const fee = RUNES_TX_CONSTANTS.FEE
       const recipientSats = RUNES_TX_CONSTANTS.RECIPIENT_SATS
@@ -97,10 +101,7 @@ export class RunesPsbtBuilder {
           script: runeTx.outs[runeUtxo.vout].script,
           value: runeUtxo.value,
         },
-        tapInternalKey: Buffer.from(
-          taprootAddress.slice(taprootAddress.length - 64),
-          'hex'
-        ), // Simplified - should derive properly
+        tapInternalKey: Buffer.from(taprootInternalPubkey, 'hex'),
       })
 
       // Output 0: Taproot return address (unallocated runes go here)
@@ -126,7 +127,7 @@ export class RunesPsbtBuilder {
       // Output 3 (or 4): OP_RETURN runestone (always last)
       const edict: RuneEdict = {
         id: runeUtxo.runeId,
-        amount: amountInRunes,
+        amount: runeAmount,
         output: 1, // Recipient is at output index 1
       }
 
@@ -141,7 +142,8 @@ export class RunesPsbtBuilder {
         {
           inputs: psbt.data.inputs.length,
           outputs: psbt.data.outputs.length,
-          runeAmount: amountInRunes.toString(),
+          runeAmount: runeAmount.toString(),
+          runeAmountDisplay: amountInRunes.toString(),
           recipient: recipientAddress,
         },
         'PSBT built successfully'
