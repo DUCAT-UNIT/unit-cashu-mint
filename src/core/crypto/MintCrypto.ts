@@ -20,7 +20,7 @@ function hashToCurve(message: string): Point {
 
   for (let counter = 0; counter < 2 ** 16; counter++) {
     const counterBytes = new Uint8Array(4)
-    new DataView(counterBytes.buffer).setUint32(0, counter, false)
+    new DataView(counterBytes.buffer).setUint32(0, counter, true)
     const hash = sha256(new Uint8Array([...msgToHash, ...counterBytes]))
 
     try {
