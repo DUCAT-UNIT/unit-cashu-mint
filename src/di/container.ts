@@ -7,6 +7,7 @@ import { MintCrypto } from '../core/crypto/MintCrypto.js'
 import { MintService } from '../core/services/MintService.js'
 import { SwapService } from '../core/services/SwapService.js'
 import { MeltService } from '../core/services/MeltService.js'
+import { CheckStateService } from '../core/services/CheckStateService.js'
 import { RunesBackend } from '../runes/RunesBackend.js'
 import { BackgroundTaskManager } from '../services/BackgroundTaskManager.js'
 
@@ -65,10 +66,12 @@ export function initializeContainer(): DIContainer {
   const mintService = new MintService(mintCrypto, quoteRepo, runesBackend, keyManager)
   const swapService = new SwapService(mintCrypto, proofRepo)
   const meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, runesBackend)
+  const checkStateService = new CheckStateService(mintCrypto, proofRepo)
 
   container.register('mintService', mintService)
   container.register('swapService', swapService)
   container.register('meltService', meltService)
+  container.register('checkStateService', checkStateService)
 
   // Background tasks
   const backgroundTasks = new BackgroundTaskManager(runesBackend, quoteRepo)

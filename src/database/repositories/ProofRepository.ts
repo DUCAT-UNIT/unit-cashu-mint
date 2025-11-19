@@ -133,4 +133,30 @@ export class ProofRepository {
     )
     return parseInt(result.rows[0].sum || '0')
   }
+
+  /**
+   * Check state of proofs by Y values (NUT-07)
+   * Returns array of {Y, state, witness} for each Y value
+   * If Y is not found in database, state is 'UNSPENT'
+   */
+  async checkState(Y_values: string[]): Promise<Array<{ Y: string; state: string; witness: string | null }>> {
+    if (Y_values.length === 0) {
+      return []
+    }
+
+    const result = await query<{ y: string; state: string; witness: string | null }>(
+      'SELECT Y, state, witness FROM proofs WHERE Y = ANY($1)',
+      [Y_values]
+    )
+
+    // Create a map of found proofs
+    const foundMap = new Map(result.rows.map(r => [r.y, { state: r.state, witness: r.witness }]))
+
+    // Return results in same order as input, with UNSPENT for missing Y values
+    return Y_values.map(Y => ({
+      Y,
+      state: foundMap.get(Y)?.state || 'UNSPENT',
+      witness: foundMap.get(Y)?.witness || null
+    }))
+  }
 }

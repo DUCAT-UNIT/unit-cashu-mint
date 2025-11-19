@@ -8,6 +8,7 @@ import { swapRoutes } from './api/routes/swap.js'
 import { mintRoutes } from './api/routes/mint.js'
 import { meltRoutes } from './api/routes/melt.js'
 import { keysRoutes } from './api/routes/keys.js'
+import { checkStateRoutes } from './api/routes/checkstate.js'
 
 // Augment FastifyInstance with our DI container
 declare module 'fastify' {
@@ -46,6 +47,7 @@ export async function createServer() {
   await server.register(mintRoutes)
   await server.register(meltRoutes)
   await server.register(keysRoutes)
+  await server.register(checkStateRoutes)
 
   // Health check
   server.get('/health', async () => {
