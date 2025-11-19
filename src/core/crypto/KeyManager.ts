@@ -30,10 +30,10 @@ export class KeyManager {
     logger.info({ runeId, unit }, 'Generating new keyset')
 
     // Generate seed from mint seed + rune ID for deterministic keys
+    // IMPORTANT: Must be deterministic so keys survive server restarts
     const seed = Buffer.concat([
       Buffer.from(env.MINT_SEED, 'hex'),
       Buffer.from(runeId),
-      randomBytes(16), // Add randomness for key rotation
     ])
 
     const private_keys: Record<number, string> = {}
