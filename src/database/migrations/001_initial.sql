@@ -77,8 +77,9 @@ CREATE TABLE IF NOT EXISTS mint_utxos (
   txid VARCHAR(64) NOT NULL,
   vout INTEGER NOT NULL,
   rune_id VARCHAR(50) NOT NULL,
-  amount BIGINT NOT NULL,
+  amount TEXT NOT NULL,  -- bigint as string (JavaScript doesn't support bigint in JSON)
   address VARCHAR(100) NOT NULL,
+  value INTEGER NOT NULL,  -- sats value of the UTXO
   spent BOOLEAN NOT NULL DEFAULT false,
   spent_in_txid VARCHAR(64),
   created_at BIGINT NOT NULL,
