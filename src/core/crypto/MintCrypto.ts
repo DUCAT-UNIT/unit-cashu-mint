@@ -105,9 +105,21 @@ export class MintCrypto {
       const providedC = pointFromHex(proof.C)
 
       // Compare
-      return expectedC.equals(providedC)
+      const isValid = expectedC.equals(providedC)
+
+      if (!isValid) {
+        logger.error({
+          keysetId: proof.id,
+          amount: proof.amount,
+          expectedC: expectedC.toHex(true),
+          providedC: providedC.toHex(true),
+          secret: proof.secret.substring(0, 16) + '...'
+        }, 'Proof signature mismatch')
+      }
+
+      return isValid
     } catch (err) {
-      logger.error({ err, proof }, 'Proof verification failed')
+      logger.error({ err, proof }, 'Proof verification failed with exception')
       return false
     }
   }
