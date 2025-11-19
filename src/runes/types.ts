@@ -133,6 +133,7 @@ export const DUCAT_UNIT_RUNE: RuneId = {
   tx: 1n,
 }
 
+export const DUCAT_UNIT_RUNE_ID = '1527352:1' // String form for database queries
 export const DUCAT_UNIT_RUNE_NAME = 'DUCAT•UNIT•RUNE'
 
 // Transaction constants from the app
