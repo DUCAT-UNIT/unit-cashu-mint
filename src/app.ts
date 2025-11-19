@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance } from 'fastify'
+import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
 import { env } from './config/env.js'
@@ -20,7 +20,7 @@ declare module 'fastify' {
  * Create and configure the Fastify server instance
  * This function is exported for testing purposes
  */
-export async function createServer(): Promise<FastifyInstance> {
+export async function createServer() {
   const server = Fastify({
     logger: logger,
     requestIdLogLabel: 'reqId',

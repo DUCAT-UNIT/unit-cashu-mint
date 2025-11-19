@@ -7,7 +7,6 @@ import { WalletKeyManager } from './WalletKeyManager.js'
 import {
   RunesDepositStatus,
   RunesWithdrawalResult,
-  DUCAT_UNIT_RUNE,
   DUCAT_UNIT_RUNE_ID,
   DUCAT_UNIT_RUNE_NAME,
   RuneId,

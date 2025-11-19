@@ -1,7 +1,6 @@
 import { RunesBackend } from '../runes/RunesBackend.js'
 import { QuoteRepository } from '../database/repositories/QuoteRepository.js'
 import { logger } from '../utils/logger.js'
-import { env } from '../config/env.js'
 
 export interface DepositMonitorConfig {
   pollInterval: number // milliseconds
