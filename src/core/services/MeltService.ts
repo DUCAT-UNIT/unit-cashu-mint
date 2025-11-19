@@ -40,12 +40,10 @@ export class MeltService {
     // Generate quote ID
     const quoteId = randomBytes(32).toString('hex')
 
-    // Calculate fee reserve using Runes backend
-    const feeReserve = await this.runesBackend.estimateFee(
-      destination,
-      BigInt(amount),
-      runeId
-    )
+    // For UNIT mints, we don't charge a fee in Cashu tokens
+    // The mint pays the BTC network fee itself
+    // Optional: Set a small service fee in UNIT (e.g., 1-2 UNIT)
+    const feeReserve = 0
 
     // Set expiry (1 hour from now for melts)
     const expiry = Math.floor(Date.now() / 1000) + 60 * 60
@@ -99,7 +97,7 @@ export class MeltService {
   async meltTokens(
     quoteId: string,
     inputs: Proof[]
-  ): Promise<{ state: string; txid?: string }> {
+  ): Promise<{ state: string; paid: boolean; payment_preimage?: string }> {
     logger.info({ quoteId, inputCount: inputs.length }, 'Melting tokens')
 
     // 1. Get quote
@@ -111,9 +109,10 @@ export class MeltService {
       throw new Error(`Quote ${quoteId} has expired`)
     }
 
-    // 3. Verify input amounts cover quote amount + fee
+    // 3. Verify input amounts cover quote amount
+    // (No fee required - mint pays the BTC network fee)
     const inputAmount = this.mintCrypto.sumProofs(inputs)
-    const requiredAmount = quote.amount + quote.fee_reserve
+    const requiredAmount = quote.amount
 
     if (inputAmount < requiredAmount) {
       throw new AmountMismatchError(requiredAmount, inputAmount)
@@ -155,7 +154,8 @@ export class MeltService {
 
       return {
         state: 'PAID',
-        txid: result.txid,
+        paid: true, // NUT-05: paid field indicates successful payment
+        payment_preimage: result.txid, // Transaction ID as payment proof
       }
     } catch (error) {
       logger.error({ error, quoteId }, 'Runes withdrawal failed')

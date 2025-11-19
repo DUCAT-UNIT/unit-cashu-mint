@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto'
 import { MintCrypto } from '../crypto/MintCrypto.js'
+import { KeyManager } from '../crypto/KeyManager.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
 import { BlindedMessage, BlindSignature, MintQuoteResponse } from '../../types/cashu.js'
 import {
@@ -14,7 +15,8 @@ export class MintService {
   constructor(
     private mintCrypto: MintCrypto,
     private quoteRepo: QuoteRepository,
-    private runesBackend: RunesBackend
+    private runesBackend: RunesBackend,
+    private keyManager: KeyManager
   ) {}
 
   /**
@@ -30,6 +32,15 @@ export class MintService {
       throw new Error(
         `Amount must be between ${env.MIN_MINT_AMOUNT} and ${env.MAX_MINT_AMOUNT}`
       )
+    }
+
+    // Ensure keyset exists for this rune
+    const existingKeysets = await this.keyManager.getActiveKeysetsByUnit(unit)
+    const keysetForRune = existingKeysets.find((k) => k.rune_id === runeId)
+
+    if (!keysetForRune) {
+      await this.keyManager.generateKeyset(runeId, unit)
+      logger.info({ runeId, unit }, 'Generated new keyset for rune')
     }
 
     // Generate quote ID

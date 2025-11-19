@@ -62,7 +62,7 @@ export function initializeContainer(): DIContainer {
   container.register('runesBackend', runesBackend)
 
   // Services
-  const mintService = new MintService(mintCrypto, quoteRepo, runesBackend)
+  const mintService = new MintService(mintCrypto, quoteRepo, runesBackend, keyManager)
   const swapService = new SwapService(mintCrypto, proofRepo)
   const meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, runesBackend)
 
