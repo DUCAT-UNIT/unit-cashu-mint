@@ -29,10 +29,10 @@ try {
     host: env.HOST,
   })
 
-  logger.info(`🚀 Mint server running on http://${env.HOST}:${env.PORT}`)
+  logger.info(`🚀 UNIT Mint server running on http://${env.HOST}:${env.PORT}`)
   logger.info(`📝 Mint info: http://${env.HOST}:${env.PORT}/v1/info`)
   logger.info(`🌐 Network: ${env.NETWORK}`)
-  logger.info(`🎯 Supported Runes: ${env.SUPPORTED_RUNES}`)
+  logger.info(`🎯 UNIT Rune ID: ${env.SUPPORTED_RUNES}`)
   logger.info(`⏰ Background tasks: Deposit monitoring + UTXO sync`)
 } catch (err) {
   logger.error(err, 'Failed to start server')

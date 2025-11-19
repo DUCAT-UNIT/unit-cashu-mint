@@ -67,12 +67,12 @@ export async function createServer(): Promise<FastifyInstance> {
         env.MINT_CONTACT_EMAIL && { method: 'email', info: env.MINT_CONTACT_EMAIL },
         env.MINT_CONTACT_NOSTR && { method: 'nostr', info: env.MINT_CONTACT_NOSTR },
       ].filter(Boolean),
-      motd: 'Welcome to Ducat Runes Mint!',
+      motd: 'Welcome to Ducat UNIT Mint!',
       nuts: {
         '4': {
           methods: [
             {
-              method: 'runes',
+              method: 'unit',
               unit: 'sat',
               min_amount: env.MIN_MINT_AMOUNT,
               max_amount: env.MAX_MINT_AMOUNT,
@@ -83,7 +83,7 @@ export async function createServer(): Promise<FastifyInstance> {
         '5': {
           methods: [
             {
-              method: 'runes',
+              method: 'unit',
               unit: 'sat',
               min_amount: env.MIN_MELT_AMOUNT,
               max_amount: env.MAX_MELT_AMOUNT,
@@ -106,6 +106,7 @@ export async function createServer(): Promise<FastifyInstance> {
         reqId: request.id,
         method: request.method,
         url: request.url,
+        stack: error.stack,
       },
       'Request error'
     )
@@ -121,10 +122,16 @@ export async function createServer(): Promise<FastifyInstance> {
     }
 
     // Default error
-    return reply.status(500).send({
-      error: 'Internal server error',
-      detail: env.NODE_ENV === 'development' ? error.message : undefined,
-    })
+    const response: { error: string; detail?: string; stack?: string } = {
+      error: error.message || 'Internal server error',
+    }
+
+    if (env.NODE_ENV === 'development') {
+      response.detail = error.message
+      response.stack = error.stack
+    }
+
+    return reply.status(500).send(response)
   })
 
   return server
