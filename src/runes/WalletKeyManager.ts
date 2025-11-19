@@ -147,15 +147,39 @@ export class WalletKeyManager {
       // - Input 0: P2WPKH (fee input from SegWit balance)
       // - Input 1: Taproot (rune input with UNIT balance)
 
-      // Sign Input 0 with SegWit key (cast to any to avoid type issues)
-      psbt.signInput(0, segwitChild as any)
+      // Create a wrapper for segwitChild that converts Uint8Array to Buffer
+      const segwitSigner = {
+        publicKey: Buffer.from(segwitChild.publicKey),
+        sign: (hash: Buffer) => {
+          const sig = segwitChild.sign(hash)
+          return Buffer.from(sig)
+        },
+      }
+
+      // Sign Input 0 with SegWit key
+      psbt.signInput(0, segwitSigner as any)
 
       // Sign Input 1 with tweaked Taproot key
       // SECURITY: Use bitcoinjs-lib's built-in tweak method
       const tweakedSigner = taprootChild.tweak(
         bitcoin.crypto.taggedHash('TapTweak', Buffer.from(taprootChild.publicKey.slice(1, 33)))
       )
-      psbt.signInput(1, tweakedSigner as any)
+
+      // Create a wrapper for tweakedSigner that converts Uint8Array to Buffer
+      // For Taproot, we need to implement signSchnorr
+      const taprootSigner = {
+        publicKey: Buffer.from(tweakedSigner.publicKey),
+        sign: (hash: Buffer) => {
+          const sig = tweakedSigner.sign(hash)
+          return Buffer.from(sig)
+        },
+        signSchnorr: (hash: Buffer) => {
+          const sig = tweakedSigner.signSchnorr(hash)
+          return Buffer.from(sig)
+        },
+      }
+
+      psbt.signInput(1, taprootSigner as any)
 
       // Finalize all inputs
       psbt.finalizeAllInputs()
@@ -164,7 +188,11 @@ export class WalletKeyManager {
 
       return psbt
     } catch (error) {
-      logger.error({ error }, 'Error signing PSBT')
+      logger.error({
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      }, 'Error signing PSBT')
       throw error
     }
   }
