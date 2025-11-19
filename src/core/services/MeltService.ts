@@ -1,0 +1,188 @@
+import { randomBytes } from 'crypto'
+import { MintCrypto } from '../crypto/MintCrypto.js'
+import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
+import { ProofRepository } from '../../database/repositories/ProofRepository.js'
+import { Proof, MeltQuoteResponse } from '../../types/cashu.js'
+import { AmountMismatchError } from '../../utils/errors.js'
+import { logger } from '../../utils/logger.js'
+import { env } from '../../config/env.js'
+import { RunesBackend } from '../../runes/RunesBackend.js'
+
+export class MeltService {
+  constructor(
+    private mintCrypto: MintCrypto,
+    private quoteRepo: QuoteRepository,
+    private proofRepo: ProofRepository,
+    private runesBackend: RunesBackend
+  ) {}
+
+  /**
+   * Create a melt quote for Runes withdrawal
+   */
+  async createMeltQuote(
+    amount: number,
+    unit: string,
+    runeId: string,
+    destination: string
+  ): Promise<MeltQuoteResponse> {
+    // Validate amount
+    if (amount < env.MIN_MELT_AMOUNT || amount > env.MAX_MELT_AMOUNT) {
+      throw new Error(
+        `Amount must be between ${env.MIN_MELT_AMOUNT} and ${env.MAX_MELT_AMOUNT}`
+      )
+    }
+
+    // Validate destination address
+    if (!destination.startsWith('bc1') && !destination.startsWith('tb1')) {
+      throw new Error('Invalid Bitcoin address')
+    }
+
+    // Generate quote ID
+    const quoteId = randomBytes(32).toString('hex')
+
+    // Calculate fee reserve using Runes backend
+    const feeReserve = await this.runesBackend.estimateFee(
+      destination,
+      BigInt(amount),
+      runeId
+    )
+
+    // Set expiry (1 hour from now for melts)
+    const expiry = Math.floor(Date.now() / 1000) + 60 * 60
+
+    // Save quote to database
+    const quote = await this.quoteRepo.createMeltQuote({
+      id: quoteId,
+      amount,
+      unit,
+      rune_id: runeId,
+      request: destination,
+      fee_reserve: feeReserve,
+      state: 'UNPAID',
+      expiry,
+    })
+
+    logger.info({ quoteId, amount, runeId, destination }, 'Melt quote created')
+
+    return {
+      quote: quote.id,
+      amount: quote.amount,
+      fee_reserve: quote.fee_reserve,
+      state: quote.state,
+      expiry: quote.expiry,
+      request: quote.request,
+      unit: quote.unit,
+    }
+  }
+
+  /**
+   * Get melt quote status
+   */
+  async getMeltQuote(quoteId: string): Promise<MeltQuoteResponse> {
+    const quote = await this.quoteRepo.findMeltQuoteByIdOrThrow(quoteId)
+
+    return {
+      quote: quote.id,
+      amount: quote.amount,
+      fee_reserve: quote.fee_reserve,
+      state: quote.state,
+      expiry: quote.expiry,
+      request: quote.request,
+      unit: quote.unit,
+      txid: quote.txid,
+    }
+  }
+
+  /**
+   * Melt tokens (redeem ecash for Runes)
+   */
+  async meltTokens(
+    quoteId: string,
+    inputs: Proof[]
+  ): Promise<{ state: string; txid?: string }> {
+    logger.info({ quoteId, inputCount: inputs.length }, 'Melting tokens')
+
+    // 1. Get quote
+    const quote = await this.quoteRepo.findMeltQuoteByIdOrThrow(quoteId)
+
+    // 2. Check quote not expired
+    const now = Math.floor(Date.now() / 1000)
+    if (now > quote.expiry) {
+      throw new Error(`Quote ${quoteId} has expired`)
+    }
+
+    // 3. Verify input amounts cover quote amount + fee
+    const inputAmount = this.mintCrypto.sumProofs(inputs)
+    const requiredAmount = quote.amount + quote.fee_reserve
+
+    if (inputAmount < requiredAmount) {
+      throw new AmountMismatchError(requiredAmount, inputAmount)
+    }
+
+    // 4. Verify all input proofs have valid signatures
+    this.mintCrypto.verifyProofsOrThrow(inputs)
+
+    // 5. Hash secrets to Y values for database lookup
+    const Y_values = inputs.map((proof) => this.mintCrypto.hashSecret(proof.secret))
+
+    // 6. Atomically mark proofs as spent
+    const transactionId = `melt_${quoteId}`
+    await this.proofRepo.markSpent(inputs, Y_values, transactionId)
+
+    // 7. Update quote to PENDING
+    await this.quoteRepo.updateMeltQuoteState(quoteId, 'PENDING')
+
+    logger.info(
+      { quoteId, inputAmount, transactionId },
+      'Proofs burned, initiating Runes withdrawal'
+    )
+
+    // 8. Initiate Runes withdrawal
+    try {
+      const result = await this.runesBackend.sendRunes(
+        quote.request, // destination
+        BigInt(quote.amount),
+        quote.rune_id
+      )
+
+      // Update quote to PAID with txid
+      await this.quoteRepo.updateMeltQuoteState(quoteId, 'PAID', result.txid)
+
+      logger.info(
+        { quoteId, txid: result.txid, feePaid: result.fee_paid },
+        'Runes withdrawal completed'
+      )
+
+      return {
+        state: 'PAID',
+        txid: result.txid,
+      }
+    } catch (error) {
+      logger.error({ error, quoteId }, 'Runes withdrawal failed')
+
+      // In production, we'd need to handle refunds here
+      // For now, leave quote in PENDING state to be retried
+      throw new Error('Runes withdrawal failed')
+    }
+  }
+
+  /**
+   * Complete a melt after Runes withdrawal succeeds
+   * This would be called by the Runes backend monitoring service
+   */
+  async completeMelt(quoteId: string, txid: string): Promise<void> {
+    await this.quoteRepo.updateMeltQuoteState(quoteId, 'PAID', txid)
+    logger.info({ quoteId, txid }, 'Melt completed successfully')
+  }
+
+  /**
+   * Fail a melt if Runes withdrawal fails
+   * This would be called by the Runes backend monitoring service
+   */
+  async failMelt(quoteId: string): Promise<void> {
+    // In production, we'd need to handle refunds here
+    // For now, just mark as failed
+    await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
+    logger.error({ quoteId }, 'Melt failed - withdrawal unsuccessful')
+  }
+}

@@ -1,0 +1,174 @@
+
+> @ducat/mint-server@0.1.0 test
+> vitest --coverage --run
+
+
+ RUN  v1.6.1 /Users/lucasrodriguez/Desktop/Ducat/mint-server
+      Coverage enabled with v8
+
+{"level":30,"time":1763507814881,"pid":25290,"hostname":"Lucass-MBP","msg":"🧪 Test suite starting..."}
+{"level":30,"time":1763507814881,"pid":25290,"hostname":"Lucass-MBP","msg":"🧪 Test suite starting..."}
+{"level":30,"time":1763507814896,"pid":25290,"hostname":"Lucass-MBP","msg":"🧪 Test suite starting..."}
+{"level":30,"time":1763507814914,"pid":25290,"hostname":"Lucass-MBP","time":"2025-11-18T23:16:54.911Z","msg":"Database connection successful"}
+{"level":30,"time":1763507814914,"pid":25290,"hostname":"Lucass-MBP","time":"2025-11-18T23:16:54.912Z","msg":"Database connection successful"}
+{"level":30,"time":1763507814924,"pid":25290,"hostname":"Lucass-MBP","time":"2025-11-18T23:16:54.921Z","msg":"Database connection successful"}
+{"level":30,"time":1763507814924,"pid":25290,"hostname":"Lucass-MBP","msg":"✅ Test database connected"}
+{"level":30,"time":1763507814926,"pid":25290,"hostname":"Lucass-MBP","time":"2025-11-18T23:16:54.925Z","msg":"Database connection successful"}
+{"level":30,"time":1763507814914,"pid":25290,"hostname":"Lucass-MBP","msg":"✅ Test database connected"}
+{"level":30,"time":1763507814915,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507814914,"pid":25290,"hostname":"Lucass-MBP","msg":"✅ Test database connected"}
+{"level":30,"time":1763507814915,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507814965,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00b5b0a6dea9b4","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507814967,"pid":25290,"hostname":"Lucass-MBP","keysetId":"003fc125e7a893","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507814926,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507814977,"pid":25290,"hostname":"Lucass-MBP","keysetId":"001e8a6383da99","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507814968,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+stdout | tests/integration/mint-flow.test.ts > Mint Integration Tests
+Test keyset generated: 001e8a6383da99
+
+{"level":30,"time":1763507814970,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507814984,"pid":25290,"hostname":"Lucass-MBP","quoteId":"8e479fddaafc2e9c0178499b137222c993c6266907e1bee1ba4345bbed350822","amount":1000,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507814986,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00ca8e7f86c1e0","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507814986,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00a93baa15aa55","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507814994,"pid":25290,"hostname":"Lucass-MBP","quoteId":"f13fbc7ac70755e531ad8e0cd2878bc1cd76a3071d56135eebd61d44e3925b25","amount":2000,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507814994,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815001,"pid":25290,"hostname":"Lucass-MBP","quoteId":"91ef80e50198283dab465be00f74599f2974466f806c4e4fab6688e96e08219e","amount":1024,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815005,"pid":25290,"hostname":"Lucass-MBP","quoteId":"91ef80e50198283dab465be00f74599f2974466f806c4e4fab6688e96e08219e","outputCount":1,"msg":"Minting tokens"}
+{"level":30,"time":1763507815006,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00adcdbead43bf","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815008,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815000,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815012,"pid":25290,"hostname":"Lucass-MBP","quoteId":"91ef80e50198283dab465be00f74599f2974466f806c4e4fab6688e96e08219e","signatureCount":1,"msg":"Tokens minted successfully"}
+{"level":30,"time":1763507815013,"pid":25290,"hostname":"Lucass-MBP","keysetId":"004d662a8dc670","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815016,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2e0d2f20ab8d13c89ffebb7eb44052a5a17d18af9e935742fba50ac2bca8eb79","amount":512,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815017,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2e0d2f20ab8d13c89ffebb7eb44052a5a17d18af9e935742fba50ac2bca8eb79","outputCount":1,"msg":"Minting tokens"}
+{"level":30,"time":1763507815019,"pid":25290,"hostname":"Lucass-MBP","keysetId":"0071629208030a","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815020,"pid":25290,"hostname":"Lucass-MBP","quoteId":"48be7cb63a72c60019b8c8f5a125ebce3b352e86acc12fa903cb04a914a45aa8","amount":1000,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815022,"pid":25290,"hostname":"Lucass-MBP","quoteId":"48be7cb63a72c60019b8c8f5a125ebce3b352e86acc12fa903cb04a914a45aa8","outputCount":1,"msg":"Minting tokens"}
+{"level":30,"time":1763507815013,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815024,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2f03174dfa1a3bdaec6e6a773042b496a57e6a1d51f79e55d17003902d118968","amount":2048,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815024,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00152c71f966cf","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815027,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2f03174dfa1a3bdaec6e6a773042b496a57e6a1d51f79e55d17003902d118968","outputCount":2,"msg":"Minting tokens"}
+{"level":30,"time":1763507815020,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815031,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00fe9bcb7ba978","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815025,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815037,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2f03174dfa1a3bdaec6e6a773042b496a57e6a1d51f79e55d17003902d118968","signatureCount":2,"msg":"Tokens minted successfully"}
+{"level":30,"time":1763507815038,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00dbaef0b0c0d3","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815032,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815043,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00a9e615c15c03","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815039,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815052,"pid":25290,"hostname":"Lucass-MBP","keysetId":"008dc415daac74","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815043,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815055,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00446272cb045f","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815058,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+stdout | tests/integration/mint-flow.test.ts > Mint Integration Tests > Swap Flow
+Valid proofs created for swap tests
+
+{"level":30,"time":1763507815047,"pid":25290,"hostname":"Lucass-MBP","inputCount":2,"outputCount":4,"msg":"Processing swap request"}
+{"level":30,"time":1763507815052,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815071,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00919175085160","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815071,"pid":25290,"hostname":"Lucass-MBP","msg":"🧹 Test cleanup complete"}
+{"level":30,"time":1763507815073,"pid":25290,"hostname":"Lucass-MBP","keysetId":"008556950fa019","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815073,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:4","unit":"sat","msg":"Generating new keyset"}
+ ✓ tests/unit/crypto/MintCrypto.test.ts  (7 tests) 190ms
+{"level":30,"time":1763507815087,"pid":25290,"hostname":"Lucass-MBP","transactionId":"swap_1763507815057_v425y9","inputAmount":2048,"outputCount":4,"msg":"Swap completed successfully"}
+{"level":30,"time":1763507815089,"pid":25290,"hostname":"Lucass-MBP","keysetId":"0085be50cb11bc","runeId":"840000:4","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815088,"pid":25290,"hostname":"Lucass-MBP","inputCount":2,"outputCount":1,"msg":"Processing swap request"}
+{"level":30,"time":1763507815089,"pid":25290,"hostname":"Lucass-MBP","inputCount":1,"outputCount":1,"msg":"Processing swap request"}
+{"level":30,"time":1763507815095,"pid":25290,"hostname":"Lucass-MBP","quoteId":"db5fb8e5d448db0e9e4d0c2c8a622cfaaf879a5b1e6e5117603b9c154b7ed63b","amount":2048,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815099,"pid":25290,"hostname":"Lucass-MBP","quoteId":"db5fb8e5d448db0e9e4d0c2c8a622cfaaf879a5b1e6e5117603b9c154b7ed63b","outputCount":2,"msg":"Minting tokens"}
+{"level":30,"time":1763507815109,"pid":25290,"hostname":"Lucass-MBP","quoteId":"db5fb8e5d448db0e9e4d0c2c8a622cfaaf879a5b1e6e5117603b9c154b7ed63b","signatureCount":2,"msg":"Tokens minted successfully"}
+{"level":30,"time":1763507815116,"pid":25290,"hostname":"Lucass-MBP","inputCount":2,"outputCount":1,"msg":"Processing swap request"}
+{"level":30,"time":1763507815136,"pid":25290,"hostname":"Lucass-MBP","transactionId":"swap_1763507815128_djsqs9","inputAmount":2048,"outputCount":1,"msg":"Swap completed successfully"}
+{"level":30,"time":1763507815136,"pid":25290,"hostname":"Lucass-MBP","inputCount":2,"outputCount":1,"msg":"Processing swap request"}
+{"level":30,"time":1763507815148,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815151,"pid":25290,"hostname":"Lucass-MBP","quoteId":"c129786c2998cc76c488c08c0fdc1a6df176628be1b71cef5c9e2fbb18ecdc9f","amount":4096,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815153,"pid":25290,"hostname":"Lucass-MBP","quoteId":"c129786c2998cc76c488c08c0fdc1a6df176628be1b71cef5c9e2fbb18ecdc9f","outputCount":2,"msg":"Minting tokens"}
+{"level":30,"time":1763507815158,"pid":25290,"hostname":"Lucass-MBP","keysetId":"0067ede07464e9","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815162,"pid":25290,"hostname":"Lucass-MBP","quoteId":"c129786c2998cc76c488c08c0fdc1a6df176628be1b71cef5c9e2fbb18ecdc9f","signatureCount":2,"msg":"Tokens minted successfully"}
+stdout | tests/integration/mint-flow.test.ts > Mint Integration Tests > Melt Flow
+Fresh proofs created for melt tests
+
+{"level":30,"time":1763507815172,"pid":25290,"hostname":"Lucass-MBP","quoteId":"6d5999a4f325bbaf2804e6a50c522bc6ea26b532774dd87b6d1fd5c6f1bd257c","amount":3000,"runeId":"840000:3","destination":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh","msg":"Melt quote created"}
+{"level":30,"time":1763507815174,"pid":25290,"hostname":"Lucass-MBP","quoteId":"504df2be53966429fb0404e3922ddbe750b6a01ac145483490361dc9ef86b040","amount":2000,"runeId":"840000:3","destination":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh","msg":"Melt quote created"}
+{"level":30,"time":1763507815175,"pid":25290,"hostname":"Lucass-MBP","quoteId":"652e37ddf1355e5e5f1e72fa760375fcfa15aa4767b651a8a2b82402955917ce","amount":3000,"runeId":"840000:3","destination":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh","msg":"Melt quote created"}
+{"level":30,"time":1763507815175,"pid":25290,"hostname":"Lucass-MBP","quoteId":"652e37ddf1355e5e5f1e72fa760375fcfa15aa4767b651a8a2b82402955917ce","inputCount":2,"msg":"Melting tokens"}
+{"level":30,"time":1763507815188,"pid":25290,"hostname":"Lucass-MBP","quoteId":"652e37ddf1355e5e5f1e72fa760375fcfa15aa4767b651a8a2b82402955917ce","inputAmount":4096,"transactionId":"melt_652e37ddf1355e5e5f1e72fa760375fcfa15aa4767b651a8a2b82402955917ce","msg":"Proofs burned, pending Runes withdrawal"}
+{"level":30,"time":1763507815192,"pid":25290,"hostname":"Lucass-MBP","quoteId":"aae207d599376a11a77261de5d3c4a4d3b4361e1fd7c6ccce97aa371bc995c4d","amount":2048,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815193,"pid":25290,"hostname":"Lucass-MBP","quoteId":"aae207d599376a11a77261de5d3c4a4d3b4361e1fd7c6ccce97aa371bc995c4d","outputCount":1,"msg":"Minting tokens"}
+{"level":30,"time":1763507815198,"pid":25290,"hostname":"Lucass-MBP","quoteId":"aae207d599376a11a77261de5d3c4a4d3b4361e1fd7c6ccce97aa371bc995c4d","signatureCount":1,"msg":"Tokens minted successfully"}
+{"level":30,"time":1763507815202,"pid":25290,"hostname":"Lucass-MBP","runeId":"840000:3","unit":"sat","msg":"Generating new keyset"}
+{"level":30,"time":1763507815203,"pid":25290,"hostname":"Lucass-MBP","quoteId":"976df861733f2ccef5cc87c7ac94202e83f72de77480e1f4ec7b2c36645d769c","amount":1000,"runeId":"840000:3","destination":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh","msg":"Melt quote created"}
+{"level":30,"time":1763507815203,"pid":25290,"hostname":"Lucass-MBP","quoteId":"976df861733f2ccef5cc87c7ac94202e83f72de77480e1f4ec7b2c36645d769c","inputCount":1,"msg":"Melting tokens"}
+{"level":30,"time":1763507815211,"pid":25290,"hostname":"Lucass-MBP","quoteId":"976df861733f2ccef5cc87c7ac94202e83f72de77480e1f4ec7b2c36645d769c","inputAmount":2048,"transactionId":"melt_976df861733f2ccef5cc87c7ac94202e83f72de77480e1f4ec7b2c36645d769c","msg":"Proofs burned, pending Runes withdrawal"}
+{"level":30,"time":1763507815212,"pid":25290,"hostname":"Lucass-MBP","quoteId":"976df861733f2ccef5cc87c7ac94202e83f72de77480e1f4ec7b2c36645d769c","txid":"4271baf047c80236ede6f8ffff5faca8fbeda995aa5c4870c1e0f3ae8d86aedf","msg":"Melt completed successfully"}
+{"level":30,"time":1763507815212,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00345a7baf0a61","runeId":"840000:3","unit":"sat","msg":"Keyset generated and saved"}
+{"level":30,"time":1763507815214,"pid":25290,"hostname":"Lucass-MBP","quoteId":"d3469be8e5ed3409f0a0a31f58d5066d816624a5def8eaaefe63cbbe06479682","amount":10000,"runeId":"840000:3","destination":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh","msg":"Melt quote created"}
+{"level":30,"time":1763507815214,"pid":25290,"hostname":"Lucass-MBP","keysetId":"00345a7baf0a61","msg":"Keyset deactivated"}
+{"level":30,"time":1763507815215,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2c8c3780a4888b985c6c82d1164468f58ddb5f62ce902422c83ec9484fabb6ab","amount":1024,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815215,"pid":25290,"hostname":"Lucass-MBP","msg":"🧹 Test cleanup complete"}
+{"level":30,"time":1763507815216,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2c8c3780a4888b985c6c82d1164468f58ddb5f62ce902422c83ec9484fabb6ab","outputCount":1,"msg":"Minting tokens"}
+{"level":30,"time":1763507815222,"pid":25290,"hostname":"Lucass-MBP","quoteId":"2c8c3780a4888b985c6c82d1164468f58ddb5f62ce902422c83ec9484fabb6ab","signatureCount":1,"msg":"Tokens minted successfully"}
+ ✓ tests/unit/crypto/KeyManager.test.ts  (11 tests) 334ms
+{"level":30,"time":1763507815225,"pid":25290,"hostname":"Lucass-MBP","quoteId":"d3469be8e5ed3409f0a0a31f58d5066d816624a5def8eaaefe63cbbe06479682","inputCount":1,"msg":"Melting tokens"}
+{"level":30,"time":1763507815227,"pid":25290,"hostname":"Lucass-MBP","quoteId":"d42eff6dbd96631a05c20e06ca8143f1ca891d3dc53d219ee752c8d5165d3898","amount":8192,"runeId":"840000:3","msg":"Mint quote created"}
+{"level":30,"time":1763507815230,"pid":25290,"hostname":"Lucass-MBP","quoteId":"d42eff6dbd96631a05c20e06ca8143f1ca891d3dc53d219ee752c8d5165d3898","outputCount":2,"msg":"Minting tokens"}
+{"level":30,"time":1763507815244,"pid":25290,"hostname":"Lucass-MBP","quoteId":"d42eff6dbd96631a05c20e06ca8143f1ca891d3dc53d219ee752c8d5165d3898","signatureCount":2,"msg":"Tokens minted successfully"}
+{"level":30,"time":1763507815257,"pid":25290,"hostname":"Lucass-MBP","inputCount":2,"outputCount":8,"msg":"Processing swap request"}
+{"level":30,"time":1763507815300,"pid":25290,"hostname":"Lucass-MBP","transactionId":"swap_1763507815265_3ashb","inputAmount":8192,"outputCount":8,"msg":"Swap completed successfully"}
+{"level":30,"time":1763507815330,"pid":25290,"hostname":"Lucass-MBP","quoteId":"38cc84800db809185b716da71f60b0f48039a75a7e6a14a8c45aef9997f9bf8d","amount":5000,"runeId":"840000:3","destination":"bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh","msg":"Melt quote created"}
+{"level":30,"time":1763507815330,"pid":25290,"hostname":"Lucass-MBP","quoteId":"38cc84800db809185b716da71f60b0f48039a75a7e6a14a8c45aef9997f9bf8d","inputCount":5,"msg":"Melting tokens"}
+{"level":30,"time":1763507815369,"pid":25290,"hostname":"Lucass-MBP","quoteId":"38cc84800db809185b716da71f60b0f48039a75a7e6a14a8c45aef9997f9bf8d","inputAmount":5120,"transactionId":"melt_38cc84800db809185b716da71f60b0f48039a75a7e6a14a8c45aef9997f9bf8d","msg":"Proofs burned, pending Runes withdrawal"}
+{"level":30,"time":1763507815371,"pid":25290,"hostname":"Lucass-MBP","quoteId":"38cc84800db809185b716da71f60b0f48039a75a7e6a14a8c45aef9997f9bf8d","txid":"d648139b84c7ba49c5fd71a7b970e58062b94838f773ac84bf5d74bb0faa8a6e","msg":"Melt completed successfully"}
+{"level":30,"time":1763507815373,"pid":25290,"hostname":"Lucass-MBP","msg":"🧹 Test cleanup complete"}
+stdout | tests/integration/mint-flow.test.ts > Mint Integration Tests > End-to-End Flow > should complete full lifecycle: mint → swap → melt
+✅ Full lifecycle complete: Mint → Swap → Melt
+
+ ✓ tests/integration/mint-flow.test.ts  (15 tests) 478ms
+
+ Test Files  3 passed (3)
+      Tests  33 passed (33)
+   Start at  00:16:54
+   Duration  765ms (transform 101ms, setup 147ms, collect 222ms, tests 1.00s, environment 0ms, prepare 132ms)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   62.39 |    75.62 |   62.24 |   62.39 |                   
+ scripts           |       0 |        0 |       0 |       0 |                   
+  migrate.ts       |       0 |        0 |       0 |       0 | 1-99              
+  test-db.ts       |       0 |        0 |       0 |       0 | 1-47              
+ src               |       0 |        0 |       0 |       0 |                   
+  server.ts        |       0 |        0 |       0 |       0 | 1-161             
+ src/api/routes    |       0 |        0 |       0 |       0 |                   
+  keys.ts          |       0 |        0 |       0 |       0 | 1-57              
+  melt.ts          |       0 |        0 |       0 |       0 | 1-85              
+  mint.ts          |       0 |        0 |       0 |       0 | 1-80              
+  swap.ts          |       0 |        0 |       0 |       0 | 1-31              
+ src/config        |   94.02 |       50 |     100 |   94.02 |                   
+  env.ts           |   94.02 |       50 |     100 |   94.02 | 48-51             
+ src/core/crypto   |   92.82 |    87.75 |   84.61 |   92.82 |                   
+  KeyManager.ts    |   94.14 |    95.83 |   83.33 |   94.14 | ...22-229,235-238 
+  MintCrypto.ts    |   92.02 |    83.33 |    92.3 |   92.02 | ...10-112,119-120 
+  index.ts         |       0 |        0 |       0 |       0 | 1-2               
+ src/core/models   |   92.89 |    61.53 |      75 |   92.89 |                   
+  Keyset.ts        |     100 |       20 |     100 |     100 | 32-35             
+  Proof.ts         |   69.23 |      100 |       0 |   69.23 | 28-39             
+  Quote.ts         |     100 |     87.5 |     100 |     100 | 90                
+ src/core/services |   94.34 |    80.64 |   91.66 |   94.34 |                   
+  MeltService.ts   |   92.12 |    66.66 |   83.33 |   92.12 | ...08-109,160-164 
+  MintService.ts   |      95 |    83.33 |     100 |      95 | 29-32,101-102     
+  SwapService.ts   |     100 |      100 |     100 |     100 |                   
+ src/database      |   83.09 |    66.66 |      75 |   83.09 |                   
+  db.ts            |   83.09 |    66.66 |      75 |   83.09 | ...34,62-64,68-71 
+ ...e/repositories |   76.82 |    78.04 |   55.17 |   76.82 |                   
+  ...Repository.ts |   76.66 |    66.66 |      60 |   76.66 | ...65,68-73,88-89 
+  ...Repository.ts |   75.73 |    92.85 |   28.57 |   75.73 | ...21-125,131-135 
+  ...Repository.ts |   79.35 |    76.47 |   72.72 |   79.35 | ...24-125,148-154 
+  index.ts         |       0 |        0 |       0 |       0 | 1-3               
+ src/di            |       0 |        0 |       0 |       0 |                   
+  container.ts     |       0 |        0 |       0 |       0 | 1-65              
+ src/utils         |   74.81 |    85.71 |      40 |   74.81 |                   
+  errors.ts        |   77.96 |      100 |      40 |   77.96 | ...06-107,112-117 
+  logger.ts        |   52.94 |        0 |     100 |   52.94 | 8-15              
+-------------------|---------|----------|---------|---------|-------------------
