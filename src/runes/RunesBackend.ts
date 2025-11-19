@@ -8,6 +8,7 @@ import {
   RunesDepositStatus,
   RunesWithdrawalResult,
   DUCAT_UNIT_RUNE,
+  DUCAT_UNIT_RUNE_ID,
   DUCAT_UNIT_RUNE_NAME,
   RuneId,
 } from './types.js'
@@ -44,6 +45,7 @@ export class RunesBackend implements IPaymentBackend {
   // Mint addresses
   private taprootAddress: string
   private segwitAddress: string
+  private taprootPubkey: string
 
   constructor(db: Pool) {
     this.ordClient = new OrdClient()
@@ -54,19 +56,21 @@ export class RunesBackend implements IPaymentBackend {
     this.walletKeyManager = new WalletKeyManager()
 
     // Derive or load addresses
-    if (env.MINT_TAPROOT_ADDRESS && env.MINT_SEGWIT_ADDRESS) {
+    if (env.MINT_TAPROOT_ADDRESS && env.MINT_SEGWIT_ADDRESS && env.MINT_TAPROOT_PUBKEY) {
       // Use addresses from environment (for testing/development)
       this.taprootAddress = env.MINT_TAPROOT_ADDRESS
       this.segwitAddress = env.MINT_SEGWIT_ADDRESS
+      this.taprootPubkey = env.MINT_TAPROOT_PUBKEY
       logger.info('Using mint addresses from environment variables')
     } else if (env.MINT_SEED) {
       // Derive addresses from seed
       const addresses = this.walletKeyManager.deriveAddresses()
       this.taprootAddress = addresses.taprootAddress
       this.segwitAddress = addresses.segwitAddress
+      this.taprootPubkey = addresses.taprootPubkey
       logger.info('Derived mint addresses from MINT_SEED')
     } else {
-      throw new Error('Either MINT_SEED or both MINT_TAPROOT_ADDRESS and MINT_SEGWIT_ADDRESS must be configured')
+      throw new Error('Either MINT_SEED or all of MINT_TAPROOT_ADDRESS, MINT_SEGWIT_ADDRESS, and MINT_TAPROOT_PUBKEY must be configured')
     }
 
     logger.info(
@@ -105,7 +109,14 @@ export class RunesBackend implements IPaymentBackend {
     try {
       logger.info({ quoteId, depositAddress }, 'Checking deposit status')
 
-      // Get address data from Ord
+      // Check if we've already recorded this deposit in the database
+      const existingDeposit = await this.utxoManager.getUnspentUtxos(DUCAT_UNIT_RUNE_ID)
+
+      // Look for a UTXO that matches this quote
+      // We need to check if there's a NEW deposit for this specific quote
+      // For now, we'll check the database first to see if we already processed this
+
+      // Get address data from Ord to check for NEW outputs
       const ordData = await this.ordClient.getAddressOutputs(depositAddress)
 
       // Check if there are any runes balances
@@ -117,28 +128,33 @@ export class RunesBackend implements IPaymentBackend {
       }
 
       // Find DUCAT•UNIT•RUNE balance
-      // runes_balances is an array of [name, amount, symbol] tuples
       const ducatBalance = ordData.runes_balances.find(
         ([name]) => name === DUCAT_UNIT_RUNE_NAME
       )
 
-      if (!ducatBalance) {
+      if (!ducatBalance || ordData.outputs.length === 0) {
         return {
           confirmed: false,
           confirmations: 0,
         }
       }
 
-      // Get the most recent output (simplified - in production, track specific quote)
-      // For now, we just check if the balance is there
-      const amount = BigInt(ducatBalance[1])
-
-      // Get confirmations from the most recent transaction
-      // This is simplified - in production, you'd track the specific UTXO for this quote
-      if (ordData.outputs.length > 0) {
-        const [txid, voutStr] = ordData.outputs[0].split(':')
+      // Check each output to find one that's NOT already in our database
+      for (const output of ordData.outputs) {
+        const [txid, voutStr] = output.split(':')
         const vout = parseInt(voutStr, 10)
 
+        // Check if this UTXO is already tracked
+        const isAlreadyTracked = existingDeposit.some(
+          utxo => utxo.txid === txid && utxo.vout === vout
+        )
+
+        if (isAlreadyTracked) {
+          // This is an old deposit, skip it
+          continue
+        }
+
+        // This is a new UTXO! Check confirmations
         const tx = await this.esploraClient.getTransaction(txid)
         const blockHeight = await this.esploraClient.getBlockHeight()
 
@@ -146,9 +162,25 @@ export class RunesBackend implements IPaymentBackend {
           ? blockHeight - tx.status.block_height + 1
           : 0
 
+        // Check if this UTXO has UNIT runes
+        const utxoDetails = await this.ordClient.getOutput(txid, vout)
+        if (!utxoDetails || !utxoDetails.runes) {
+          continue
+        }
+
+        // runes is a Record<string, {amount: string, id: string}>
+        // Check if DUCAT•UNIT•RUNE is present by name
+        const unitRune = utxoDetails.runes[DUCAT_UNIT_RUNE_NAME]
+
+        if (!unitRune) {
+          continue
+        }
+
+        const amount = BigInt(unitRune.amount)
+
         logger.info(
-          { quoteId, amount: amount.toString(), confirmations },
-          'Deposit detected'
+          { quoteId, txid, vout, amount: amount.toString(), confirmations },
+          'New deposit detected'
         )
 
         return {
@@ -160,12 +192,24 @@ export class RunesBackend implements IPaymentBackend {
         }
       }
 
+      // No new deposits found
       return {
         confirmed: false,
         confirmations: 0,
       }
     } catch (error) {
-      logger.error({ error, quoteId, depositAddress }, 'Error checking deposit')
+      logger.error(
+        {
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : error,
+          quoteId,
+          depositAddress
+        },
+        'Error checking deposit'
+      )
       throw error
     }
   }
@@ -227,6 +271,7 @@ export class RunesBackend implements IPaymentBackend {
         utxos.runeUtxo,
         utxos.satUtxo,
         this.taprootAddress,
+        this.taprootPubkey,
         this.segwitAddress,
         destination,
         amount
@@ -300,6 +345,13 @@ export class RunesBackend implements IPaymentBackend {
         if (outputData.runes && outputData.runes[DUCAT_UNIT_RUNE_NAME]) {
           const runeData = outputData.runes[DUCAT_UNIT_RUNE_NAME]
 
+          // Parse rune ID from the data
+          const [blockStr, txStr] = runeData.id.split(':')
+          const runeId: RuneId = {
+            block: BigInt(blockStr),
+            tx: BigInt(txStr),
+          }
+
           runeUtxos.push({
             txid,
             vout,
@@ -307,7 +359,7 @@ export class RunesBackend implements IPaymentBackend {
             address: this.taprootAddress,
             runeAmount: BigInt(runeData.amount),
             runeName: DUCAT_UNIT_RUNE_NAME,
-            runeId: DUCAT_UNIT_RUNE,
+            runeId,
           })
         }
       }

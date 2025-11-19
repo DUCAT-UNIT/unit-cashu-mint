@@ -18,9 +18,10 @@ const envSchema = z.object({
 
   MINT_SEED: z.string().length(64), // 32 bytes hex
   MINT_PUBKEY: z.string(),
-  MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving runes
+  MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
+  MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
   MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
-  SUPPORTED_RUNES: z.string(), // comma-separated
+  SUPPORTED_RUNES: z.string(), // UNIT rune ID (840000:3)
 
   ENCRYPTION_KEY: z.string().length(64),
   JWT_SECRET: z.string(),
@@ -30,8 +31,8 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.string().default('100'),
   RATE_LIMIT_WINDOW: z.string().default('60000'),
 
-  MINT_NAME: z.string().default('Ducat Runes Mint'),
-  MINT_DESCRIPTION: z.string().default('Cashu ecash backed by Bitcoin Runes'),
+  MINT_NAME: z.string().default('Ducat UNIT Mint'),
+  MINT_DESCRIPTION: z.string().default('Cashu ecash backed by UNIT'),
   MINT_CONTACT_EMAIL: z.string().email().optional(),
   MINT_CONTACT_NOSTR: z.string().optional(),
 
