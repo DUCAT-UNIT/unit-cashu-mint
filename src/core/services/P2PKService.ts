@@ -51,7 +51,7 @@ export class P2PKService {
         tags: data.tags || []
       }
     } catch (err) {
-      logger.error({ err, secret: proof.secret }, 'Failed to parse P2PK secret')
+      // Not a P2PK proof - this is expected for regular proofs
       return null
     }
   }
