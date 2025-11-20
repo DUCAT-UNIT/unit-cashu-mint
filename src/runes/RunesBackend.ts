@@ -10,6 +10,7 @@ import {
   DUCAT_UNIT_RUNE_ID,
   DUCAT_UNIT_RUNE_NAME,
   RuneId,
+  RuneUtxo,
 } from './types.js'
 import { logger } from '../utils/logger.js'
 import { env } from '../config/env.js'
@@ -178,12 +179,19 @@ export class RunesBackend implements IPaymentBackend {
         const amount = BigInt(unitRune.amount)
 
         logger.info(
-          { quoteId, txid, vout, amount: amount.toString(), confirmations },
+          {
+            quoteId,
+            txid,
+            vout,
+            amount: amount.toString(),
+            confirmations,
+            required: env.MINT_CONFIRMATIONS
+          },
           'New deposit detected'
         )
 
         return {
-          confirmed: confirmations >= 1,
+          confirmed: confirmations >= env.MINT_CONFIRMATIONS,
           amount,
           txid,
           vout,
@@ -203,7 +211,7 @@ export class RunesBackend implements IPaymentBackend {
             message: error.message,
             stack: error.stack,
             name: error.name
-          } : error,
+          } : String(error),
           quoteId,
           depositAddress
         },
@@ -267,7 +275,7 @@ export class RunesBackend implements IPaymentBackend {
 
       // Build PSBT
       const { psbt, fee } = await this.psbtBuilder.buildRunesPsbt(
-        utxos.runeUtxo,
+        utxos.runeUtxos,
         utxos.satUtxo,
         this.taprootAddress,
         this.taprootPubkey,
@@ -291,9 +299,41 @@ export class RunesBackend implements IPaymentBackend {
         throw new Error('Transaction broadcast verification failed - txid mismatch')
       }
 
-      // Mark UTXOs as spent
-      await this.utxoManager.markSpent(utxos.runeUtxo.txid, utxos.runeUtxo.vout, txid)
+      // Mark all rune UTXOs as spent
+      for (const runeUtxo of utxos.runeUtxos) {
+        await this.utxoManager.markSpent(runeUtxo.txid, runeUtxo.vout, txid)
+      }
+
+      // Mark sat UTXO as spent
       await this.utxoManager.markSpent(utxos.satUtxo.txid, utxos.satUtxo.vout, txid)
+
+      // Track the return UTXO (output 0) if there's excess runes
+      const totalRunesFromInputs = utxos.runeUtxos.reduce((sum, u) => sum + u.runeAmount, 0n)
+      const excessRunes = totalRunesFromInputs - amount
+
+      if (excessRunes > 0n) {
+        // Output 0 is the taproot return address with excess runes
+        const returnUtxo: RuneUtxo = {
+          txid,
+          vout: 0, // Return output is always at index 0
+          value: 10000, // RUNE_RETURN_SATS from PSBT builder
+          address: this.taprootAddress,
+          runeAmount: excessRunes,
+          runeName: DUCAT_UNIT_RUNE_NAME,
+          runeId: parsedRuneId,
+        }
+
+        await this.utxoManager.addUtxo(returnUtxo)
+
+        logger.info(
+          {
+            txid,
+            vout: 0,
+            excessRunes: excessRunes.toString(),
+          },
+          'Tracked return UTXO with excess runes'
+        )
+      }
 
       logger.info(
         {
@@ -301,13 +341,25 @@ export class RunesBackend implements IPaymentBackend {
           amount: amount.toString(),
           destination,
           fee,
+          excessReturned: excessRunes.toString(),
         },
         'Runes withdrawal completed successfully'
       )
 
       return { txid, fee_paid: fee }
     } catch (error) {
-      logger.error({ error, destination, amount: amount.toString() }, 'Error sending Runes')
+      logger.error(
+        {
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : String(error),
+          destination,
+          amount: amount.toString()
+        },
+        'Error sending Runes'
+      )
       throw error
     }
   }
@@ -344,11 +396,22 @@ export class RunesBackend implements IPaymentBackend {
         if (outputData.runes && outputData.runes[DUCAT_UNIT_RUNE_NAME]) {
           const runeData = outputData.runes[DUCAT_UNIT_RUNE_NAME]
 
-          // Parse rune ID from the data
-          const [blockStr, txStr] = runeData.id.split(':')
-          const runeId: RuneId = {
-            block: BigInt(blockStr),
-            tx: BigInt(txStr),
+          // Parse rune ID from the data, or use the known DUCAT•UNIT•RUNE ID
+          let runeId: RuneId
+          if (runeData.id) {
+            const [blockStr, txStr] = runeData.id.split(':')
+            runeId = {
+              block: BigInt(blockStr),
+              tx: BigInt(txStr),
+            }
+          } else {
+            // Use the known DUCAT•UNIT•RUNE ID
+            const [blockStr, txStr] = DUCAT_UNIT_RUNE_ID.split(':')
+            runeId = {
+              block: BigInt(blockStr),
+              tx: BigInt(txStr),
+            }
+            logger.debug({ txid, vout }, 'Using default DUCAT•UNIT•RUNE ID')
           }
 
           runeUtxos.push({
@@ -368,7 +431,16 @@ export class RunesBackend implements IPaymentBackend {
 
       logger.info({ count: runeUtxos.length, ...syncResult }, 'UTXO sync complete')
     } catch (error) {
-      logger.error({ error }, 'Error syncing UTXOs')
+      logger.error(
+        {
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : String(error)
+        },
+        'Error syncing UTXOs'
+      )
       throw error
     }
   }

@@ -25,7 +25,17 @@ export const swapRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(400).send({ error: 'Invalid outputs' })
     }
 
-    const result = await swapService.swap(inputs, outputs)
-    return reply.code(200).send(result)
+    try {
+      const result = await swapService.swap(inputs, outputs)
+      return reply.code(200).send(result)
+    } catch (error: any) {
+      if (error.code === 'P2PK_VERIFICATION_FAILED') {
+        return reply.code(403).send({
+          error: 'P2PK verification failed',
+          detail: 'Proof is locked to a public key and requires a valid signature witness'
+        })
+      }
+      throw error
+    }
   })
 }

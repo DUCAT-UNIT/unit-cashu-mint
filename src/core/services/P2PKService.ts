@@ -1,5 +1,5 @@
 import { Proof } from '../../types/cashu.js'
-import { verifySchnorrSignature, verifyMultipleSignatures } from '../crypto/SchnorrSignature.js'
+import { verifyMultipleSignatures } from '../crypto/SchnorrSignature.js'
 import { logger } from '../../utils/logger.js'
 
 /**
@@ -65,7 +65,8 @@ export class P2PKService {
     }
 
     try {
-      const witness = JSON.parse(proof.witness)
+      const witnessStr = typeof proof.witness === 'string' ? proof.witness : JSON.stringify(proof.witness)
+      const witness = JSON.parse(witnessStr)
       if (!witness.signatures || !Array.isArray(witness.signatures)) {
         return null
       }
@@ -103,15 +104,22 @@ export class P2PKService {
   verifyP2PKProof(proof: Proof): boolean {
     const secret = this.parseP2PKSecret(proof)
     if (!secret) {
-      logger.warn('Invalid P2PK secret format', { proofSecret: proof.secret })
+      logger.warn({ proofSecret: proof.secret }, 'Invalid P2PK secret format')
       return false
     }
 
     const witness = this.parseP2PKWitness(proof)
     if (!witness || witness.signatures.length === 0) {
-      logger.warn('Missing P2PK witness', { proofId: proof.id })
+      logger.warn({ proofId: proof.id, hasWitness: !!proof.witness }, 'Missing P2PK witness')
       return false
     }
+
+    logger.info({
+      proofId: proof.id,
+      expectedPubkey: secret.data.substring(0, 16) + '...',
+      signaturesProvided: witness.signatures.length,
+      signaturePreview: witness.signatures[0]?.substring(0, 16) + '...'
+    }, 'Verifying P2PK proof')
 
     // Check locktime
     const locktime = this.getTag(secret, 'locktime')
@@ -134,6 +142,18 @@ export class P2PKService {
   }
 
   /**
+   * Normalize public key format - convert comma-separated to hex if needed
+   */
+  private normalizePubkey(pubkey: string): string {
+    // If it contains commas, it's in array format like "117,7,194,195..."
+    if (pubkey.includes(',')) {
+      const bytes = pubkey.split(',').map(n => parseInt(n.trim()))
+      return Buffer.from(bytes).toString('hex')
+    }
+    return pubkey
+  }
+
+  /**
    * Verify proof before locktime (or no locktime)
    */
   private verifyBeforeLocktime(
@@ -141,11 +161,11 @@ export class P2PKService {
     secret: P2PKSecret,
     witness: P2PKWitness
   ): boolean {
-    // Get authorized public keys
-    const pubkeys = [secret.data] // Primary pubkey from data field
+    // Get authorized public keys and normalize format
+    const pubkeys = [this.normalizePubkey(secret.data)] // Primary pubkey from data field
     const additionalPubkeys = this.getTag(secret, 'pubkeys')
     if (additionalPubkeys) {
-      pubkeys.push(...additionalPubkeys)
+      pubkeys.push(...additionalPubkeys.map(pk => this.normalizePubkey(pk)))
     }
 
     // Get required signature count
@@ -164,12 +184,16 @@ export class P2PKService {
     )
 
     if (!isValid) {
-      logger.warn('P2PK signature verification failed', {
+      logger.warn({
         proofId: proof.id,
         requiredSigs,
         providedSigs: witness.signatures.length,
-        pubkeys: pubkeys.map(p => p.substring(0, 16) + '...')
-      })
+        pubkeys: pubkeys.map(p => p.substring(0, 16) + '...'),
+        signatures: witness.signatures.map(s => s.substring(0, 16) + '...'),
+        messagePreview: message.substring(0, 100) + '...'
+      }, 'P2PK signature verification failed')
+    } else {
+      logger.info({ proofId: proof.id }, 'P2PK signature verified successfully')
     }
 
     return isValid
@@ -183,13 +207,14 @@ export class P2PKService {
     secret: P2PKSecret,
     witness: P2PKWitness
   ): boolean {
-    // Get refund public keys
-    const refundPubkeys = this.getTag(secret, 'refund')
-    if (!refundPubkeys || refundPubkeys.length === 0) {
+    // Get refund public keys and normalize format
+    const refundPubkeysRaw = this.getTag(secret, 'refund')
+    if (!refundPubkeysRaw || refundPubkeysRaw.length === 0) {
       // No refund keys specified, anyone can spend after locktime
-      logger.info('No refund keys, allowing spend after locktime', { proofId: proof.id })
+      logger.info({ proofId: proof.id }, 'No refund keys, allowing spend after locktime')
       return true
     }
+    const refundPubkeys = refundPubkeysRaw.map(pk => this.normalizePubkey(pk))
 
     // Get required refund signature count
     const nSigsRefundTag = this.getTag(secret, 'n_sigs_refund')
@@ -209,11 +234,11 @@ export class P2PKService {
     )
 
     if (!isValid) {
-      logger.warn('P2PK refund signature verification failed', {
+      logger.warn({
         proofId: proof.id,
         requiredSigs,
         providedSigs: witness.signatures.length
-      })
+      }, 'P2PK refund signature verification failed')
     }
 
     return isValid

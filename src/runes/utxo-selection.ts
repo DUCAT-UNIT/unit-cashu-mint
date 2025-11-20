@@ -9,26 +9,29 @@ export class UtxoSelector {
   ) {}
 
   /**
-   * Find a Rune UTXO with sufficient runes
+   * Find Rune UTXOs with sufficient runes (can combine multiple)
    * @param address The taproot address to search
    * @param requiredAmount Minimum rune amount needed
    * @param runeName Name of the rune (e.g., "DUCAT•UNIT•RUNE")
    * @param runeId Rune ID { block, tx }
    * @param spentUtxos Set of spent UTXO keys "txid:vout" to exclude
-   * @returns RuneUtxo or null if not found
+   * @returns Array of RuneUtxos or null if not found
    */
-  async findRuneUtxo(
+  async findRuneUtxos(
     address: string,
     requiredAmount: bigint,
     runeName: string,
     runeId: RuneId,
     spentUtxos: Set<string> = new Set()
-  ): Promise<RuneUtxo | null> {
+  ): Promise<RuneUtxo[] | null> {
     try {
       // Get all outputs for this address from Ord
       const ordData = await this.ordClient.getAddressOutputs(address)
 
-      // Check each output for runes
+      const runeUtxos: RuneUtxo[] = []
+      let totalAmount = 0n
+
+      // Collect UTXOs until we have enough runes
       for (const output of ordData.outputs) {
         const [txid, voutStr] = output.split(':')
         const vout = parseInt(voutStr, 10)
@@ -47,35 +50,49 @@ export class UtxoSelector {
           const runeData = outputData.runes[runeName]
           const runeAmount = BigInt(runeData.amount)
 
-          // Check if this UTXO has enough runes
-          if (runeAmount >= requiredAmount) {
-            // Verify it's not spent on the blockchain
-            const outspend = await this.esploraClient.getOutspend(txid, vout)
+          // Verify it's not spent on the blockchain
+          const outspend = await this.esploraClient.getOutspend(txid, vout)
 
-            if (!outspend.spent) {
+          if (!outspend.spent) {
+            runeUtxos.push({
+              txid,
+              vout,
+              value: outputData.value,
+              address,
+              runeAmount,
+              runeName,
+              runeId,
+            })
+
+            totalAmount += runeAmount
+
+            // Check if we have enough now
+            if (totalAmount >= requiredAmount) {
               logger.info(
-                { txid, vout, runeAmount: runeAmount.toString(), requiredAmount: requiredAmount.toString() },
-                'Found suitable rune UTXO'
+                {
+                  utxoCount: runeUtxos.length,
+                  totalAmount: totalAmount.toString(),
+                  requiredAmount: requiredAmount.toString()
+                },
+                'Found sufficient rune UTXOs'
               )
-
-              return {
-                txid,
-                vout,
-                value: outputData.value,
-                address,
-                runeAmount,
-                runeName,
-                runeId,
-              }
+              return runeUtxos
             }
           }
         }
       }
 
-      logger.warn({ address, requiredAmount: requiredAmount.toString(), runeName }, 'No suitable rune UTXO found')
+      // If we get here, we didn't find enough
+      logger.warn({
+        address,
+        requiredAmount: requiredAmount.toString(),
+        totalFound: totalAmount.toString(),
+        utxoCount: runeUtxos.length,
+        runeName
+      }, 'Insufficient rune UTXOs found')
       return null
     } catch (error) {
-      logger.error({ error, address, runeName }, 'Error finding rune UTXO')
+      logger.error({ error, address, runeName }, 'Error finding rune UTXOs')
       throw error
     }
   }
@@ -138,8 +155,8 @@ export class UtxoSelector {
     runeName: string,
     runeId: RuneId,
     spentUtxos: Set<string> = new Set()
-  ): Promise<{ runeUtxo: RuneUtxo; satUtxo: SatUtxo } | null> {
-    const runeUtxo = await this.findRuneUtxo(
+  ): Promise<{ runeUtxos: RuneUtxo[]; satUtxo: SatUtxo } | null> {
+    const runeUtxos = await this.findRuneUtxos(
       taprootAddress,
       requiredRunes,
       runeName,
@@ -147,7 +164,7 @@ export class UtxoSelector {
       spentUtxos
     )
 
-    if (!runeUtxo) {
+    if (!runeUtxos) {
       return null
     }
 
@@ -157,6 +174,6 @@ export class UtxoSelector {
       return null
     }
 
-    return { runeUtxo, satUtxo }
+    return { runeUtxos, satUtxo }
   }
 }

@@ -26,14 +26,16 @@ export class KeyManager {
   /**
    * Generate a new keyset for a Rune
    */
-  async generateKeyset(runeId: string, unit: string = 'sat'): Promise<Keyset> {
+  async generateKeyset(runeId: string, unit: string = 'unit'): Promise<Keyset> {
     logger.info({ runeId, unit }, 'Generating new keyset')
 
-    // Generate seed from mint seed + rune ID for deterministic keys
+    // Generate seed from mint seed + rune ID + unit for deterministic keys
     // IMPORTANT: Must be deterministic so keys survive server restarts
+    // IMPORTANT: Unit must be included to ensure different units have different keysets
     const seed = Buffer.concat([
       Buffer.from(env.MINT_SEED, 'hex'),
       Buffer.from(runeId),
+      Buffer.from(unit),
     ])
 
     const private_keys: Record<number, string> = {}
@@ -88,10 +90,26 @@ export class KeyManager {
   /**
    * Get private key for a specific amount in a keyset
    */
-  getPrivateKey(keysetId: string, amount: number): string {
-    const keyset = this.keysetCache.get(keysetId)
+  async getPrivateKey(keysetId: string, amount: number): Promise<string> {
+    let keyset = this.keysetCache.get(keysetId)
+
     if (!keyset) {
-      throw new KeysetNotFoundError(keysetId)
+      // Load from database if not in cache
+      try {
+        const dbKeyset = await this.keysetRepo.findByIdOrThrow(keysetId)
+
+        // Decrypt private keys and cache
+        const decryptedPrivateKeys = this.decryptKeys(dbKeyset.private_keys)
+        keyset = {
+          ...dbKeyset,
+          private_keys: decryptedPrivateKeys,
+        }
+        this.keysetCache.set(keysetId, keyset)
+
+        logger.debug({ keysetId }, 'Keyset loaded from database into cache')
+      } catch (error) {
+        throw new KeysetNotFoundError(keysetId)
+      }
     }
 
     if (!keyset.active) {
@@ -169,6 +187,28 @@ export class KeyManager {
     }
 
     return keysets
+  }
+
+  /**
+   * Get active keyset for a specific rune ID and unit
+   */
+  async getKeysetByRuneIdAndUnit(runeId: string, unit: string): Promise<Keyset | null> {
+    const keyset = await this.keysetRepo.findActiveByRuneIdAndUnit(runeId, unit)
+
+    if (!keyset) {
+      return null
+    }
+
+    // Decrypt and cache if not already cached
+    if (!this.keysetCache.has(keyset.id)) {
+      const decryptedPrivateKeys = this.decryptKeys(keyset.private_keys)
+      this.keysetCache.set(keyset.id, {
+        ...keyset,
+        private_keys: decryptedPrivateKeys,
+      })
+    }
+
+    return keyset
   }
 
   /**

@@ -159,4 +159,16 @@ export class ProofRepository {
       witness: foundMap.get(Y)?.witness || null
     }))
   }
+
+  /**
+   * Delete proofs by transaction ID (to revert a failed melt)
+   * This effectively marks them as unspent since they won't be in the database
+   */
+  async deleteByTransactionId(transactionId: string): Promise<number> {
+    const result = await query(
+      'DELETE FROM proofs WHERE transaction_id = $1',
+      [transactionId]
+    )
+    return result.rowCount || 0
+  }
 }

@@ -80,6 +80,19 @@ export class KeysetRepository {
     return result.rows.map(keysetFromRow)
   }
 
+  async findActiveByRuneIdAndUnit(runeId: string, unit: string): Promise<Keyset | null> {
+    const result = await query<KeysetRow>(
+      'SELECT * FROM keysets WHERE rune_id = $1 AND unit = $2 AND active = true ORDER BY created_at DESC LIMIT 1',
+      [runeId, unit]
+    )
+
+    if (result.rows.length === 0) {
+      return null
+    }
+
+    return keysetFromRow(result.rows[0])
+  }
+
   async setActive(id: string, active: boolean): Promise<void> {
     await query('UPDATE keysets SET active = $1 WHERE id = $2', [active, id])
   }

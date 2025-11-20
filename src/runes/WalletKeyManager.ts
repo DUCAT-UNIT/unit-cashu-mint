@@ -145,7 +145,7 @@ export class WalletKeyManager {
 
       // RUNES transactions have mixed input types:
       // - Input 0: P2WPKH (fee input from SegWit balance)
-      // - Input 1: Taproot (rune input with UNIT balance)
+      // - Inputs 1...N: Taproot (rune inputs with UNIT balance, can be multiple)
 
       // Create a wrapper for segwitChild that converts Uint8Array to Buffer
       const segwitSigner = {
@@ -159,7 +159,7 @@ export class WalletKeyManager {
       // Sign Input 0 with SegWit key
       psbt.signInput(0, segwitSigner as any)
 
-      // Sign Input 1 with tweaked Taproot key
+      // Sign all Taproot inputs (1 through N) with tweaked Taproot key
       // SECURITY: Use bitcoinjs-lib's built-in tweak method
       const tweakedSigner = taprootChild.tweak(
         bitcoin.crypto.taggedHash('TapTweak', Buffer.from(taprootChild.publicKey.slice(1, 33)))
@@ -179,7 +179,11 @@ export class WalletKeyManager {
         },
       }
 
-      psbt.signInput(1, taprootSigner as any)
+      // Sign all taproot inputs (inputs 1 through N)
+      const inputCount = psbt.data.inputs.length
+      for (let i = 1; i < inputCount; i++) {
+        psbt.signInput(i, taprootSigner as any)
+      }
 
       // Finalize all inputs
       psbt.finalizeAllInputs()

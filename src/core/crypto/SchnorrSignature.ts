@@ -30,10 +30,10 @@ export function verifySchnorrSignature(
 
     // Convert signature from hex (should be 128 hex chars = 64 bytes)
     if (signature.length !== 128) {
-      logger.warn('Invalid Schnorr signature length', {
+      logger.warn({
         expected: 128,
         actual: signature.length
-      })
+      }, 'Invalid Schnorr signature length')
       return false
     }
 
@@ -50,10 +50,10 @@ export function verifySchnorrSignature(
       // Already x-only format
       pubkeyBytes = Buffer.from(publicKey, 'hex')
     } else {
-      logger.warn('Invalid public key length', {
+      logger.warn({
         expected: '64 or 66',
         actual: publicKey.length
-      })
+      }, 'Invalid public key length')
       return false
     }
 

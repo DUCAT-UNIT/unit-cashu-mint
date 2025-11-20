@@ -20,28 +20,37 @@ export class SwapService {
    * This is the core operation that prevents double-spending
    */
   async swap(inputs: Proof[], outputs: BlindedMessage[]): Promise<{ signatures: BlindSignature[] }> {
-    logger.info(
-      { inputCount: inputs.length, outputCount: outputs.length },
-      'Processing swap request'
-    )
-
     // 1. Verify input amounts match output amounts
     const inputAmount = this.mintCrypto.sumProofs(inputs)
     const outputAmount = outputs.reduce((sum, o) => sum + o.amount, 0)
+
+    logger.info(
+      {
+        inputCount: inputs.length,
+        outputCount: outputs.length,
+        inputAmount,
+        outputAmount,
+        inputAmounts: inputs.map(p => p.amount),
+        outputAmounts: outputs.map(o => o.amount)
+      },
+      'Processing swap request'
+    )
 
     if (inputAmount !== outputAmount) {
       throw new AmountMismatchError(outputAmount, inputAmount)
     }
 
     // 2. Verify all input proofs have valid signatures
-    this.mintCrypto.verifyProofsOrThrow(inputs)
+    await this.mintCrypto.verifyProofsOrThrow(inputs)
 
     // 2b. Verify P2PK spending conditions (NUT-11)
     for (const input of inputs) {
       if (this.p2pkService.isP2PKProof(input)) {
         const isValid = this.p2pkService.verifyP2PKProof(input)
         if (!isValid) {
-          throw new Error(`P2PK witness verification failed for proof ${input.secret.substring(0, 50)}...`)
+          const err: any = new Error(`P2PK witness verification failed - proof is locked to a public key and requires a valid signature witness`)
+          err.code = 'P2PK_VERIFICATION_FAILED'
+          throw err
         }
       }
     }
@@ -59,7 +68,7 @@ export class SwapService {
     await this.proofRepo.markSpent(inputs, Y_values, transactionId)
 
     // 5. Sign output blinded messages
-    const signatures = this.mintCrypto.signBlindedMessages(outputs)
+    const signatures = await this.mintCrypto.signBlindedMessages(outputs)
 
     logger.info(
       { transactionId, inputAmount, outputCount: signatures.length },

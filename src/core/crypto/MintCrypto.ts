@@ -45,10 +45,10 @@ export class MintCrypto {
    * Sign a blinded message (NUT-00)
    * C_ = k * B_
    */
-  signBlindedMessage(message: BlindedMessage, includeDleq: boolean = false): BlindSignature {
+  async signBlindedMessage(message: BlindedMessage, includeDleq: boolean = false): Promise<BlindSignature> {
     try {
       // Get private key for this amount/keyset
-      const privateKeyHex = this.keyManager.getPrivateKey(message.id, message.amount)
+      const privateKeyHex = await this.keyManager.getPrivateKey(message.id, message.amount)
       const k = BigInt('0x' + privateKeyHex)
 
       // Parse blinded message point
@@ -78,21 +78,21 @@ export class MintCrypto {
   /**
    * Sign multiple blinded messages (batch operation)
    */
-  signBlindedMessages(
+  async signBlindedMessages(
     messages: BlindedMessage[],
     includeDleq: boolean = false
-  ): BlindSignature[] {
-    return messages.map((msg) => this.signBlindedMessage(msg, includeDleq))
+  ): Promise<BlindSignature[]> {
+    return Promise.all(messages.map((msg) => this.signBlindedMessage(msg, includeDleq)))
   }
 
   /**
    * Verify a proof is valid (NUT-00)
    * Checks: C == k * hash_to_curve(secret)
    */
-  verifyProof(proof: Proof): boolean {
+  async verifyProof(proof: Proof): Promise<boolean> {
     try {
       // Get private key
-      const privateKeyHex = this.keyManager.getPrivateKey(proof.id, proof.amount)
+      const privateKeyHex = await this.keyManager.getPrivateKey(proof.id, proof.amount)
       const k = BigInt('0x' + privateKeyHex)
 
       // Hash secret to curve point
@@ -127,16 +127,17 @@ export class MintCrypto {
   /**
    * Verify multiple proofs (batch operation)
    */
-  verifyProofs(proofs: Proof[]): boolean {
-    return proofs.every((proof) => this.verifyProof(proof))
+  async verifyProofs(proofs: Proof[]): Promise<boolean> {
+    const results = await Promise.all(proofs.map((proof) => this.verifyProof(proof)))
+    return results.every((result) => result)
   }
 
   /**
    * Verify proofs and throw on first invalid
    */
-  verifyProofsOrThrow(proofs: Proof[]): void {
+  async verifyProofsOrThrow(proofs: Proof[]): Promise<void> {
     for (const proof of proofs) {
-      if (!this.verifyProof(proof)) {
+      if (!(await this.verifyProof(proof))) {
         throw new InvalidProofError(`Invalid signature for proof with secret: ${proof.secret}`)
       }
     }

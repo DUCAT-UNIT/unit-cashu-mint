@@ -94,7 +94,7 @@ describe('Mint Integration Tests', () => {
   let testPublicKeys: Record<number, string>
 
   const RUNE_ID = '840000:3' // DUCAT•UNIT•RUNE
-  const UNIT = 'sat'
+  const UNIT = 'unit' // UNIT tokens, not sats!
 
   beforeAll(async () => {
     // Test database connection

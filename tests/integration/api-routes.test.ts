@@ -6,7 +6,7 @@ import { createServer } from '../../src/app.js'
 describe('API Routes Integration', () => {
   let server: FastifyInstance
   let keysetId: string
-  const UNIT = 'sat'
+  const UNIT = 'unit' // UNIT tokens, not sats!
   const RUNE_ID = '840000:3'
 
   beforeAll(async () => {

@@ -30,7 +30,7 @@ export class RunesPsbtBuilder {
    * PSBT Structure:
    * Inputs:
    *   [0] P2WPKH (fee payment from SegWit address)
-   *   [1] Taproot (rune-bearing UTXO)
+   *   [1...N] Taproot (rune-bearing UTXOs, can be multiple)
    *
    * Outputs:
    *   [0] Taproot return address (gets unallocated runes)
@@ -39,7 +39,7 @@ export class RunesPsbtBuilder {
    *   [3] OP_RETURN (runestone with edict, always last)
    */
   async buildRunesPsbt(
-    runeUtxo: RuneUtxo,
+    runeUtxos: RuneUtxo[],
     satUtxo: SatUtxo,
     taprootAddress: string,
     taprootInternalPubkey: string,
@@ -51,8 +51,8 @@ export class RunesPsbtBuilder {
     const psbt = new bitcoin.Psbt({ network })
 
     try {
-      // UNIT has 2 decimal places, so multiply by 100 to get the raw rune amount
-      const runeAmount = amountInRunes * 100n
+      // amountInRunes is already in smallest units (e.g., 192143 for 1921.43 UNIT)
+      const runeAmount = amountInRunes
 
       // Calculate transaction economics
       const fee = RUNES_TX_CONSTANTS.FEE
@@ -60,13 +60,17 @@ export class RunesPsbtBuilder {
       const runeReturnSats = RUNES_TX_CONSTANTS.RUNE_RETURN_SATS
       const dustLimit = RUNES_TX_CONSTANTS.DUST_LIMIT
 
+      // Calculate total input sats from all rune UTXOs
+      const totalRuneSats = runeUtxos.reduce((sum, utxo) => sum + utxo.value, 0)
+
       // Calculate change
-      const totalInput = satUtxo.value + runeUtxo.value
+      const totalInput = satUtxo.value + totalRuneSats
       const totalOutput = fee + recipientSats + runeReturnSats
       const change = totalInput - totalOutput
 
       logger.info(
         {
+          runeUtxoCount: runeUtxos.length,
           totalInput,
           totalOutput,
           fee,
@@ -74,7 +78,7 @@ export class RunesPsbtBuilder {
           runeReturnSats,
           change,
         },
-        'Building Runes PSBT'
+        'Building Runes PSBT with multiple inputs'
       )
 
       // Input 0: P2WPKH (fee payment from SegWit address)
@@ -90,19 +94,21 @@ export class RunesPsbtBuilder {
         },
       })
 
-      // Input 1: Taproot (rune-bearing UTXO)
-      const runeTxHex = await this.esploraClient.getTransactionHex(runeUtxo.txid)
-      const runeTx = bitcoin.Transaction.fromHex(runeTxHex)
+      // Inputs 1...N: Taproot rune-bearing UTXOs
+      for (const runeUtxo of runeUtxos) {
+        const runeTxHex = await this.esploraClient.getTransactionHex(runeUtxo.txid)
+        const runeTx = bitcoin.Transaction.fromHex(runeTxHex)
 
-      psbt.addInput({
-        hash: runeUtxo.txid,
-        index: runeUtxo.vout,
-        witnessUtxo: {
-          script: runeTx.outs[runeUtxo.vout].script,
-          value: runeUtxo.value,
-        },
-        tapInternalKey: Buffer.from(taprootInternalPubkey, 'hex'),
-      })
+        psbt.addInput({
+          hash: runeUtxo.txid,
+          index: runeUtxo.vout,
+          witnessUtxo: {
+            script: runeTx.outs[runeUtxo.vout].script,
+            value: runeUtxo.value,
+          },
+          tapInternalKey: Buffer.from(taprootInternalPubkey, 'hex'),
+        })
+      }
 
       // Output 0: Taproot return address (unallocated runes go here)
       psbt.addOutput({
@@ -125,11 +131,22 @@ export class RunesPsbtBuilder {
       }
 
       // Output 3 (or 4): OP_RETURN runestone (always last)
+      // IMPORTANT: Calculate total runes from all inputs (already in smallest units)
+      const totalRunesFromUtxos = runeUtxos.reduce((sum, utxo) => sum + utxo.runeAmount, 0n)
+
+      // CRITICAL: Use REQUESTED amount in edict, NOT total from UTXOs
+      // Excess runes will go to output 0 (taproot return address)
       const edict: RuneEdict = {
-        id: runeUtxo.runeId,
-        amount: runeAmount,
+        id: runeUtxos[0].runeId,
+        amount: runeAmount, // This is the REQUESTED amount, not totalRunesFromUtxos
         output: 1, // Recipient is at output index 1
       }
+
+      logger.info({
+        requestedAmount: runeAmount.toString(),
+        totalFromUtxos: totalRunesFromUtxos.toString(),
+        excess: (totalRunesFromUtxos - runeAmount).toString()
+      }, 'Edict using REQUESTED amount, excess returns to mint')
 
       const { encodedRunestone } = encodeRunestone({ edicts: [edict] })
 

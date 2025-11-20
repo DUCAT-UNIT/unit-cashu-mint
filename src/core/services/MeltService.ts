@@ -45,6 +45,10 @@ export class MeltService {
     // Generate quote ID
     const quoteId = randomBytes(32).toString('hex')
 
+    // Convert amount to smallest unit (multiply by 100 for Runes 2 decimal places)
+    // e.g., 9.23 UNIT → 923 in smallest units
+    const amountInt = Math.round(amount * 100)
+
     // For UNIT mints, we don't charge a fee in Cashu tokens
     // The mint pays the BTC network fee itself
     // Optional: Set a small service fee in UNIT (e.g., 1-2 UNIT)
@@ -56,7 +60,7 @@ export class MeltService {
     // Save quote to database
     const quote = await this.quoteRepo.createMeltQuote({
       id: quoteId,
-      amount,
+      amount: amountInt,
       unit,
       rune_id: runeId,
       request: destination,
@@ -65,7 +69,7 @@ export class MeltService {
       expiry,
     })
 
-    logger.info({ quoteId, amount, runeId, destination }, 'Melt quote created')
+    logger.info({ quoteId, amount: amountInt, runeId, destination }, 'Melt quote created')
 
     return {
       quote: quote.id,
@@ -124,7 +128,7 @@ export class MeltService {
     }
 
     // 4. Verify all input proofs have valid signatures
-    this.mintCrypto.verifyProofsOrThrow(inputs)
+    await this.mintCrypto.verifyProofsOrThrow(inputs)
 
     // 4b. Verify P2PK spending conditions (NUT-11)
     for (const input of inputs) {
@@ -144,7 +148,7 @@ export class MeltService {
     // 5. Hash secrets to Y values for database lookup
     const Y_values = inputs.map((proof) => this.mintCrypto.hashSecret(proof.secret))
 
-    // 6. Atomically mark proofs as spent
+    // 6. Mark proofs as spent FIRST (to prevent double-spending)
     const transactionId = `melt_${quoteId}`
     await this.proofRepo.markSpent(inputs, Y_values, transactionId)
 
@@ -153,7 +157,7 @@ export class MeltService {
 
     logger.info(
       { quoteId, inputAmount, transactionId },
-      'Proofs burned, initiating Runes withdrawal'
+      'Proofs locked, initiating Runes withdrawal'
     )
 
     // 8. Initiate Runes withdrawal
@@ -169,7 +173,7 @@ export class MeltService {
 
       logger.info(
         { quoteId, txid: result.txid, feePaid: result.fee_paid },
-        'Runes withdrawal completed'
+        'Runes withdrawal completed - proofs permanently burned'
       )
 
       return {
@@ -178,11 +182,31 @@ export class MeltService {
         payment_preimage: result.txid, // Transaction ID as payment proof
       }
     } catch (error) {
-      logger.error({ error, quoteId }, 'Runes withdrawal failed')
+      logger.error(
+        {
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : String(error),
+          quoteId,
+          transactionId
+        },
+        'Runes withdrawal failed - reverting proofs to unspent'
+      )
 
-      // In production, we'd need to handle refunds here
-      // For now, leave quote in PENDING state to be retried
-      throw new Error('Runes withdrawal failed')
+      // Revert proofs to unspent by deleting them from database
+      const deletedCount = await this.proofRepo.deleteByTransactionId(transactionId)
+
+      // Revert quote to UNPAID so user can retry
+      await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
+
+      logger.info(
+        { quoteId, transactionId, deletedCount },
+        'Proofs reverted to unspent, user can retry melt'
+      )
+
+      throw new Error('Runes withdrawal failed - your ecash tokens remain valid, please try again')
     }
   }
 
