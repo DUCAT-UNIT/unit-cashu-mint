@@ -1,14 +1,19 @@
 import { MintCrypto } from '../crypto/MintCrypto.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
+import { P2PKService } from './P2PKService.js'
 import { Proof, BlindedMessage, BlindSignature } from '../../types/cashu.js'
 import { AmountMismatchError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 
 export class SwapService {
+  private p2pkService: P2PKService
+
   constructor(
     private mintCrypto: MintCrypto,
     private proofRepo: ProofRepository
-  ) {}
+  ) {
+    this.p2pkService = new P2PKService()
+  }
 
   /**
    * Swap proofs for new blinded signatures
@@ -30,6 +35,21 @@ export class SwapService {
 
     // 2. Verify all input proofs have valid signatures
     this.mintCrypto.verifyProofsOrThrow(inputs)
+
+    // 2b. Verify P2PK spending conditions (NUT-11)
+    for (const input of inputs) {
+      if (this.p2pkService.isP2PKProof(input)) {
+        const isValid = this.p2pkService.verifyP2PKProof(input)
+        if (!isValid) {
+          throw new Error(`P2PK witness verification failed for proof ${input.secret.substring(0, 50)}...`)
+        }
+      }
+    }
+
+    // 2c. Verify SIG_ALL mode if applicable
+    if (!this.p2pkService.verifyP2PKProofsWithSigAll(inputs)) {
+      throw new Error('P2PK SIG_ALL verification failed')
+    }
 
     // 3. Hash secrets to Y values for database lookup
     const Y_values = inputs.map((proof) => this.mintCrypto.hashSecret(proof.secret))
