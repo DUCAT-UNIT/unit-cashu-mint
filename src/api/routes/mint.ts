@@ -17,11 +17,11 @@ export const mintRoutes: FastifyPluginAsync = async (fastify) => {
   const mintService = fastify.diContainer.resolve<MintService>('mintService')
 
   /**
-   * POST /v1/mint/quote/runes
+   * POST /v1/mint/quote/unit
    * Create a mint quote for Runes deposit (NUT-04)
    */
   fastify.post<{ Body: MintQuoteRequest }>(
-    '/v1/mint/quote/runes',
+    '/v1/mint/quote/unit',
     async (request, reply) => {
       const { amount, unit, rune_id } = request.body
 
@@ -43,11 +43,11 @@ export const mintRoutes: FastifyPluginAsync = async (fastify) => {
   )
 
   /**
-   * GET /v1/mint/quote/runes/:quote_id
+   * GET /v1/mint/quote/unit/:quote_id
    * Get mint quote status (NUT-04)
    */
   fastify.get<{ Params: { quote_id: string } }>(
-    '/v1/mint/quote/runes/:quote_id',
+    '/v1/mint/quote/unit/:quote_id',
     async (request, reply) => {
       const { quote_id } = request.params
 
@@ -57,11 +57,11 @@ export const mintRoutes: FastifyPluginAsync = async (fastify) => {
   )
 
   /**
-   * POST /v1/mint/runes
+   * POST /v1/mint/unit
    * Mint tokens after quote is paid (NUT-04)
    */
   fastify.post<{ Body: MintTokensRequest }>(
-    '/v1/mint/runes',
+    '/v1/mint/unit',
     async (request, reply) => {
       const { quote, outputs } = request.body
 

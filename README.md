@@ -266,8 +266,8 @@ pm2 start ecosystem.config.cjs
 
 ### 🔌 Custom Extensions
 
-- **Runes Deposit**: `POST /v1/mint/quote/runes` - Custom quote format with `rune_id`
-- **Runes Withdrawal**: `POST /v1/melt/quote/runes` - Returns Runes to specified address
+- **Runes Deposit**: `POST /v1/mint/quote/unit` - Custom quote format with `rune_id`
+- **Runes Withdrawal**: `POST /v1/melt/quote/unit` - Returns Runes to specified address
 - **Reserve Transparency**: `/health/reserves` - Real-time reserve vs issued token ratio
 
 ---
@@ -376,7 +376,7 @@ Content-Type: application/json
 
 #### Create Deposit Quote
 ```http
-POST /v1/mint/quote/runes
+POST /v1/mint/quote/unit
 Content-Type: application/json
 
 {
@@ -399,7 +399,7 @@ Content-Type: application/json
 
 #### Check Deposit Quote Status
 ```http
-GET /v1/mint/quote/runes/:quote_id
+GET /v1/mint/quote/unit/:quote_id
 ```
 
 **Response:**
@@ -416,7 +416,7 @@ GET /v1/mint/quote/runes/:quote_id
 
 #### Mint Tokens (After Deposit Confirmed)
 ```http
-POST /v1/mint/runes
+POST /v1/mint/unit
 Content-Type: application/json
 
 {
@@ -466,7 +466,7 @@ Content-Type: application/json
 
 #### Create Withdrawal Quote
 ```http
-POST /v1/melt/quote/runes
+POST /v1/melt/quote/unit
 Content-Type: application/json
 
 {
@@ -489,7 +489,7 @@ Content-Type: application/json
 
 #### Withdraw Tokens (Melt to Runes)
 ```http
-POST /v1/melt/runes
+POST /v1/melt/unit
 Content-Type: application/json
 
 {

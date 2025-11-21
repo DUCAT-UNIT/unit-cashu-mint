@@ -18,11 +18,11 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
   const meltService = fastify.diContainer.resolve<MeltService>('meltService')
 
   /**
-   * POST /v1/melt/quote/runes
+   * POST /v1/melt/quote/unit
    * Create a melt quote for Runes withdrawal (NUT-05)
    */
   fastify.post<{ Body: MeltQuoteRequest }>(
-    '/v1/melt/quote/runes',
+    '/v1/melt/quote/unit',
     async (request, reply) => {
       const { amount, unit, rune_id, request: destination } = request.body
 
@@ -48,11 +48,11 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
   )
 
   /**
-   * GET /v1/melt/quote/runes/:quote_id
+   * GET /v1/melt/quote/unit/:quote_id
    * Get melt quote status (NUT-05)
    */
   fastify.get<{ Params: { quote_id: string } }>(
-    '/v1/melt/quote/runes/:quote_id',
+    '/v1/melt/quote/unit/:quote_id',
     async (request, reply) => {
       const { quote_id } = request.params
 
@@ -62,11 +62,11 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
   )
 
   /**
-   * POST /v1/melt/runes
+   * POST /v1/melt/unit
    * Melt tokens to withdraw Runes (NUT-05)
    */
   fastify.post<{ Body: MeltTokensRequest }>(
-    '/v1/melt/runes',
+    '/v1/melt/unit',
     async (request, reply) => {
       const { quote, inputs } = request.body
 
