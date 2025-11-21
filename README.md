@@ -6,6 +6,20 @@ A production-ready [Cashu](https://github.com/cashubtc/nuts) ecash mint backed b
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green?logo=node.js)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## What is UNIT?
+
+[UNIT](https://docs.ducatprotocol.com/unit/philosophy) is a Bitcoin-backed CDP (Collateralized Debt Position) stablecoin maintaining a soft peg to USD at 1.01-1.04 UNIT per dollar. Unlike algorithmic stablecoins, UNIT uses **exogenous collateralization** (135-160% BTC backing) to ensure stability during market stress.
+
+**Key Properties:**
+- **0% interest** on loans
+- **BTC-backed**: Overcollateralized with Bitcoin, not self-referential tokens
+- **Decentralized**: Liquidation auctions maintain the peg
+- **Conservative**: Designed for responsible on-chain leverage
+
+This mint enables **privacy-preserving transfers** of UNIT tokens through Cashu ecash, combining the stability of Bitcoin-backed stablecoins with the privacy of blind signatures.
+
+Learn more: [UNIT Philosophy](https://docs.ducatprotocol.com/unit/philosophy)
+
 ## Features
 
 - **Cashu Protocol**: Full NUT-00 through NUT-11 implementation
