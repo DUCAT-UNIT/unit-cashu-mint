@@ -260,9 +260,8 @@ pm2 start ecosystem.config.cjs
 | **05** | Melt Operations | ✅ Complete | Withdrawal quotes, PSBT building, on-chain redemption |
 | **06** | Mint Info | ✅ Complete | `/v1/info` endpoint with Runes metadata |
 | **07** | State Checking | ✅ Complete | `/v1/checkstate` for proof verification |
-| **08** | Fee Returns | ⚠️ Basic | Fee return in change, no overpayment optimization |
-| **11** | P2PK Conditions | ✅ Complete | Pubkey locks, timelocks, refund keys, n-of-m multisig |
-| **12** | DLEQ Proofs | 🚧 Planned | Proof of proper key generation |
+| **10** | Spending Conditions | ✅ Complete | Framework for conditional spending (used by P2PK) |
+| **11** | P2PK Conditions | ✅ Complete | Pubkey locks, timelocks, refund keys, n-of-m multisig (SIG_INPUTS mode) |
 
 ### 🔌 Custom Extensions
 

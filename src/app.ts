@@ -94,10 +94,8 @@ export async function createServer() {
           disabled: false,
         },
         '7': { supported: true },
-        '8': { supported: true },
         '10': { supported: true },
         '11': { supported: true },
-        '12': { supported: true },
       },
     }
   })
