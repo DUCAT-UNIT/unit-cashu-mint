@@ -36,6 +36,8 @@ const envSchema = z.object({
   MINT_CONTACT_EMAIL: z.string().email().optional(),
   MINT_CONTACT_NOSTR: z.string().optional(),
 
+  CORS_ORIGINS: z.string().optional(), // Comma-separated list of allowed origins
+
   MIN_MINT_AMOUNT: z.string().default('100'),
   MAX_MINT_AMOUNT: z.string().default('100000000'),
   MIN_MELT_AMOUNT: z.string().default('100'),
@@ -65,6 +67,9 @@ export const env = {
   MINT_CONFIRMATIONS: parseInt(parsed.data.MINT_CONFIRMATIONS),
   MELT_CONFIRMATIONS: parseInt(parsed.data.MELT_CONFIRMATIONS),
   SUPPORTED_RUNES_ARRAY: parsed.data.SUPPORTED_RUNES.split(',').map((r) => r.trim()),
+  CORS_ORIGINS_ARRAY: parsed.data.CORS_ORIGINS
+    ? parsed.data.CORS_ORIGINS.split(',').map((o) => o.trim())
+    : undefined,
 }
 
 export type Env = typeof env

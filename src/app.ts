@@ -34,7 +34,8 @@ export async function createServer() {
 
   // Register plugins
   await server.register(cors, {
-    origin: true, // TODO: Configure for production
+    origin: env.CORS_ORIGINS_ARRAY || false, // Use env variable or block all origins
+    credentials: true,
   })
 
   await server.register(rateLimit, {
