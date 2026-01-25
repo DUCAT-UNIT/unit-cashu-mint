@@ -125,8 +125,13 @@ export class DepositMonitor {
           )
 
           if (depositStatus.confirmed) {
-            // Update quote to PAID
-            await this.quoteRepo.updateMintQuoteState(quote.id, 'PAID')
+            // Update quote to PAID with txid/vout for later verification
+            await this.quoteRepo.updateMintQuoteState(
+              quote.id,
+              'PAID',
+              depositStatus.txid,
+              depositStatus.vout
+            )
             confirmedCount++
 
             logger.info(
@@ -134,6 +139,7 @@ export class DepositMonitor {
                 quoteId: quote.id,
                 amount: quote.amount,
                 txid: depositStatus.txid,
+                vout: depositStatus.vout,
                 confirmations: depositStatus.confirmations,
               },
               'Deposit confirmed - quote marked as PAID'

@@ -26,8 +26,8 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { amount, unit, rune_id, request: destination } = request.body
 
-      if (!amount || amount <= 0) {
-        return reply.code(400).send({ error: 'Invalid amount' })
+      if (!amount || amount <= 0 || !Number.isInteger(amount)) {
+        return reply.code(400).send({ error: 'Invalid amount - must be a positive integer (smallest units)' })
       }
 
       if (!unit) {

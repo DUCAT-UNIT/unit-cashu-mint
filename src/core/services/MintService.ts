@@ -57,14 +57,11 @@ export class MintService {
     // Generate quote ID
     const quoteId = randomBytes(32).toString('hex')
 
-    // Convert amount to smallest unit (multiply by 100 for Runes 2 decimal places)
-    // e.g., 256 UNIT → 25600 in smallest units
-    const amountInt = Math.round(amount * 100)
-
     // Generate deposit address using Runes backend
+    // Amount is already in smallest units (integer)
     const depositAddress = await this.runesBackend.createDepositAddress(
       quoteId,
-      BigInt(amountInt),
+      BigInt(amount),
       runeId
     )
 
@@ -74,7 +71,7 @@ export class MintService {
     // Save quote to database
     const quote = await this.quoteRepo.createMintQuote({
       id: quoteId,
-      amount: amountInt,
+      amount,
       unit,
       rune_id: runeId,
       request: depositAddress,
@@ -82,7 +79,7 @@ export class MintService {
       expiry,
     })
 
-    logger.info({ quoteId, amount: amountInt, runeId, depositAddress }, 'Mint quote created')
+    logger.info({ quoteId, amount, runeId, depositAddress }, 'Mint quote created')
 
     return {
       quote: quote.id,
@@ -134,12 +131,17 @@ export class MintService {
             }
           }
 
-          // Update quote to PAID
-          await this.quoteRepo.updateMintQuoteState(quoteId, 'PAID')
+          // Update quote to PAID with txid/vout for later verification
+          await this.quoteRepo.updateMintQuoteState(
+            quoteId,
+            'PAID',
+            depositStatus.txid,
+            depositStatus.vout
+          )
           quote.state = 'PAID'
 
           logger.info(
-            { quoteId, txid: depositStatus.txid, confirmations: depositStatus.confirmations },
+            { quoteId, txid: depositStatus.txid, vout: depositStatus.vout, confirmations: depositStatus.confirmations },
             'Deposit confirmed, quote marked as PAID'
           )
         }
@@ -178,11 +180,20 @@ export class MintService {
     // - Chain reorgs removing the deposit after quote marked PAID
     // - Race conditions between marking PAID and minting tokens
     logger.info(
-      { quoteId, currentState: quote.state, requiredConfirmations: env.MINT_CONFIRMATIONS },
+      { quoteId, currentState: quote.state, quoteTxid: quote.txid, quoteVout: quote.vout, requiredConfirmations: env.MINT_CONFIRMATIONS },
       'Verifying deposit on-chain before minting'
     )
 
-    const depositStatus = await this.runesBackend.checkDeposit(quoteId, quote.request)
+    // If quote has txid/vout stored, verify that specific UTXO directly
+    // Otherwise fall back to scanning all UTXOs (for old quotes without txid/vout)
+    let depositStatus
+    if (quote.txid && quote.vout !== undefined) {
+      // Verify the specific UTXO that was recorded when quote was marked PAID
+      depositStatus = await this.runesBackend.verifySpecificDeposit(quoteId, quote.txid, quote.vout)
+    } else {
+      // Fall back to scanning all UTXOs (backwards compatibility)
+      depositStatus = await this.runesBackend.checkDeposit(quoteId, quote.request, true)
+    }
 
     // Check confirmations meet minimum threshold
     if (!depositStatus.confirmed || (depositStatus.confirmations ?? 0) < env.MINT_CONFIRMATIONS) {

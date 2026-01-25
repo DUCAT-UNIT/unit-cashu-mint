@@ -838,12 +838,10 @@ function getDashboardHTML(): string {
       return n.toLocaleString();
     }
 
-    // Format UNIT amounts (stored as smallest unit, divide by 100)
+    // Format UNIT amounts (already in smallest units, display as integer)
     function formatUnit(n) {
       if (typeof n === 'string') n = parseInt(n) || 0;
-      const unitValue = n / 100;
-      // Always show 2 decimal places
-      return unitValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString();
     }
 
     function formatUptime(seconds) {

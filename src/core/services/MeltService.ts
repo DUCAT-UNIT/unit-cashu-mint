@@ -45,9 +45,7 @@ export class MeltService {
     // Generate quote ID
     const quoteId = randomBytes(32).toString('hex')
 
-    // Convert amount to smallest unit (multiply by 100 for Runes 2 decimal places)
-    // e.g., 9.23 UNIT → 923 in smallest units
-    const amountInt = Math.round(amount * 100)
+    // Amount is already in smallest units (integer)
 
     // For UNIT mints, we don't charge a fee in Cashu tokens
     // The mint pays the BTC network fee itself
@@ -60,7 +58,7 @@ export class MeltService {
     // Save quote to database
     const quote = await this.quoteRepo.createMeltQuote({
       id: quoteId,
-      amount: amountInt,
+      amount,
       unit,
       rune_id: runeId,
       request: destination,
@@ -69,7 +67,7 @@ export class MeltService {
       expiry,
     })
 
-    logger.info({ quoteId, amount: amountInt, runeId, destination }, 'Melt quote created')
+    logger.info({ quoteId, amount, runeId, destination }, 'Melt quote created')
 
     return {
       quote: quote.id,

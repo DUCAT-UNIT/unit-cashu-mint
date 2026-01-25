@@ -20,7 +20,8 @@ import { env } from '../config/env.js'
  */
 export interface IPaymentBackend {
   createDepositAddress(quoteId: string, amount: bigint, runeId: string): Promise<string>
-  checkDeposit(quoteId: string, depositAddress: string): Promise<RunesDepositStatus>
+  checkDeposit(quoteId: string, depositAddress: string, includeTracked?: boolean): Promise<RunesDepositStatus>
+  verifySpecificDeposit(quoteId: string, txid: string, vout: number): Promise<RunesDepositStatus>
   estimateFee(destination: string, amount: bigint, runeId: string): Promise<number>
   sendRunes(
     destination: string,
@@ -101,10 +102,14 @@ export class RunesBackend implements IPaymentBackend {
 
   /**
    * Check if a deposit has been received for a quote
+   * @param quoteId - The quote ID
+   * @param depositAddress - The deposit address to check
+   * @param includeTracked - If true, also check already-tracked UTXOs (for re-verification during minting)
    */
   async checkDeposit(
     quoteId: string,
-    depositAddress: string
+    depositAddress: string,
+    includeTracked: boolean = false
   ): Promise<RunesDepositStatus> {
     try {
       logger.info({ quoteId, depositAddress }, 'Checking deposit status')
@@ -121,6 +126,7 @@ export class RunesBackend implements IPaymentBackend {
 
       // Check if there are any runes balances
       if (!ordData.runes_balances || ordData.runes_balances.length === 0) {
+        logger.info({ quoteId, outputCount: ordData.outputs?.length ?? 0 }, 'No runes balances found at address')
         return {
           confirmed: false,
           confirmations: 0,
@@ -133,6 +139,10 @@ export class RunesBackend implements IPaymentBackend {
       )
 
       if (!ducatBalance || ordData.outputs.length === 0) {
+        logger.info(
+          { quoteId, outputCount: ordData.outputs.length, runeNames: ordData.runes_balances.map(([name]) => name) },
+          'No DUCAT•UNIT•RUNE balance found or no outputs'
+        )
         return {
           confirmed: false,
           confirmations: 0,
@@ -140,6 +150,12 @@ export class RunesBackend implements IPaymentBackend {
       }
 
       // Check each output to find one that's NOT already in our database
+      // (or include tracked UTXOs if re-verifying for minting)
+      logger.info(
+        { quoteId, outputCount: ordData.outputs.length, includeTracked, trackedCount: existingDeposit.length },
+        'Checking outputs for deposit'
+      )
+
       for (const output of ordData.outputs) {
         const [txid, voutStr] = output.split(':')
         const vout = parseInt(voutStr, 10)
@@ -149,12 +165,13 @@ export class RunesBackend implements IPaymentBackend {
           utxo => utxo.txid === txid && utxo.vout === vout
         )
 
-        if (isAlreadyTracked) {
-          // This is an old deposit, skip it
+        // Skip already-tracked UTXOs unless we're re-verifying for minting
+        if (isAlreadyTracked && !includeTracked) {
+          logger.debug({ txid, vout, isAlreadyTracked, includeTracked }, 'Skipping tracked UTXO')
           continue
         }
 
-        // This is a new UTXO! Check confirmations
+        // Check confirmations
         const tx = await this.esploraClient.getTransaction(txid)
         const blockHeight = await this.esploraClient.getBlockHeight()
 
@@ -165,6 +182,7 @@ export class RunesBackend implements IPaymentBackend {
         // Check if this UTXO has UNIT runes
         const utxoDetails = await this.ordClient.getOutput(txid, vout)
         if (!utxoDetails || !utxoDetails.runes) {
+          logger.debug({ txid, vout }, 'UTXO has no runes, skipping')
           continue
         }
 
@@ -173,8 +191,11 @@ export class RunesBackend implements IPaymentBackend {
         const unitRune = utxoDetails.runes[DUCAT_UNIT_RUNE_NAME]
 
         if (!unitRune) {
+          logger.debug({ txid, vout, availableRunes: Object.keys(utxoDetails.runes) }, 'UTXO does not have DUCAT•UNIT•RUNE, skipping')
           continue
         }
+
+        logger.debug({ txid, vout, confirmations, isAlreadyTracked }, 'Found UTXO with DUCAT•UNIT•RUNE')
 
         const amount = BigInt(unitRune.amount)
 
@@ -216,6 +237,78 @@ export class RunesBackend implements IPaymentBackend {
           depositAddress
         },
         'Error checking deposit'
+      )
+      throw error
+    }
+  }
+
+  /**
+   * Verify a specific deposit by txid/vout
+   * Used for re-verification when we already know which UTXO to check
+   */
+  async verifySpecificDeposit(
+    quoteId: string,
+    txid: string,
+    vout: number
+  ): Promise<RunesDepositStatus> {
+    try {
+      logger.info({ quoteId, txid, vout }, 'Verifying specific deposit')
+
+      // Get transaction info from esplora
+      const tx = await this.esploraClient.getTransaction(txid)
+      const blockHeight = await this.esploraClient.getBlockHeight()
+
+      const confirmations = tx.status.confirmed && tx.status.block_height
+        ? blockHeight - tx.status.block_height + 1
+        : 0
+
+      // Get UTXO details from Ord
+      const utxoDetails = await this.ordClient.getOutput(txid, vout)
+      if (!utxoDetails || !utxoDetails.runes) {
+        logger.warn({ quoteId, txid, vout }, 'UTXO not found or has no runes')
+        return {
+          confirmed: false,
+          confirmations: 0,
+        }
+      }
+
+      // Check for DUCAT•UNIT•RUNE
+      const unitRune = utxoDetails.runes[DUCAT_UNIT_RUNE_NAME]
+      if (!unitRune) {
+        logger.warn({ quoteId, txid, vout, availableRunes: Object.keys(utxoDetails.runes) }, 'UTXO does not have DUCAT•UNIT•RUNE')
+        return {
+          confirmed: false,
+          confirmations: 0,
+        }
+      }
+
+      const amount = BigInt(unitRune.amount)
+
+      logger.info(
+        { quoteId, txid, vout, amount: amount.toString(), confirmations, required: env.MINT_CONFIRMATIONS },
+        'Specific deposit verified'
+      )
+
+      return {
+        confirmed: confirmations >= env.MINT_CONFIRMATIONS,
+        amount,
+        txid,
+        vout,
+        confirmations,
+      }
+    } catch (error) {
+      logger.error(
+        {
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : String(error),
+          quoteId,
+          txid,
+          vout
+        },
+        'Error verifying specific deposit'
       )
       throw error
     }
