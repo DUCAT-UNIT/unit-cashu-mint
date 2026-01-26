@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { BackgroundTaskManager } from '../../../src/services/BackgroundTaskManager.js'
-import { MockRunesBackend } from '../../mocks/RunesBackend.mock.js'
+import { BackendRegistry } from '../../../src/core/payment/BackendRegistry.js'
+import { IPaymentBackend } from '../../../src/core/payment/types.js'
 import { QuoteRepository } from '../../../src/database/repositories/QuoteRepository.js'
 
 vi.mock('../../../src/database/db.js', () => ({
@@ -13,16 +14,34 @@ vi.mock('../../../src/utils/logger.js', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    debug: vi.fn(),
   },
 }))
 
+// Mock backend for testing
+function createMockBackend(unit: string): IPaymentBackend {
+  return {
+    unit,
+    createDepositAddress: vi.fn(),
+    checkDeposit: vi.fn().mockResolvedValue({ confirmed: false, confirmations: 0 }),
+    verifySpecificDeposit: vi.fn(),
+    estimateFee: vi.fn(),
+    withdraw: vi.fn(),
+    getBalance: vi.fn(),
+    syncUtxos: vi.fn().mockResolvedValue(undefined),
+  }
+}
+
 describe('BackgroundTaskManager', () => {
   let backgroundTaskManager: BackgroundTaskManager
-  let runesBackend: MockRunesBackend
+  let backendRegistry: BackendRegistry
+  let mockBackend: IPaymentBackend
   let quoteRepo: QuoteRepository
 
   beforeEach(() => {
-    runesBackend = new MockRunesBackend()
+    backendRegistry = new BackendRegistry()
+    mockBackend = createMockBackend('sat')
+    backendRegistry.register(mockBackend)
     quoteRepo = new QuoteRepository()
   })
 
@@ -36,7 +55,7 @@ describe('BackgroundTaskManager', () => {
   describe('start/stop', () => {
     it('should start all background tasks', () => {
       vi.useFakeTimers()
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       backgroundTaskManager.start()
       const status = backgroundTaskManager.getStatus()
@@ -50,7 +69,7 @@ describe('BackgroundTaskManager', () => {
 
     it('should not start if already running', () => {
       vi.useFakeTimers()
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       backgroundTaskManager.start()
       backgroundTaskManager.start() // Second start should be ignored
@@ -63,7 +82,7 @@ describe('BackgroundTaskManager', () => {
 
     it('should stop all background tasks', () => {
       vi.useFakeTimers()
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       backgroundTaskManager.start()
       backgroundTaskManager.stop()
@@ -77,7 +96,7 @@ describe('BackgroundTaskManager', () => {
     })
 
     it('should not stop if not running', () => {
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       // Should not throw
       expect(() => backgroundTaskManager.stop()).not.toThrow()
@@ -87,7 +106,7 @@ describe('BackgroundTaskManager', () => {
   describe('getStatus', () => {
     it('should return status of all tasks', () => {
       vi.useFakeTimers()
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       const statusBefore = backgroundTaskManager.getStatus()
       expect(statusBefore.isStarted).toBe(false)
@@ -114,25 +133,24 @@ describe('BackgroundTaskManager', () => {
   describe('triggerUtxoSync', () => {
     it('should manually trigger UTXO sync', async () => {
       vi.useFakeTimers()
-      const syncSpy = vi.spyOn(runesBackend, 'syncUtxos').mockResolvedValue()
 
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
       backgroundTaskManager.start()
 
       // Clear initial sync calls
       await vi.advanceTimersByTimeAsync(10)
-      syncSpy.mockClear()
+      vi.mocked(mockBackend.syncUtxos!).mockClear()
 
       // Manually trigger
       await backgroundTaskManager.triggerUtxoSync()
 
-      expect(syncSpy).toHaveBeenCalledTimes(1)
+      expect(mockBackend.syncUtxos).toHaveBeenCalledTimes(1)
 
       vi.useRealTimers()
     })
 
     it('should throw if tasks not started', async () => {
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       await expect(backgroundTaskManager.triggerUtxoSync()).rejects.toThrow(
         'UtxoSyncService is not running'
@@ -144,27 +162,25 @@ describe('BackgroundTaskManager', () => {
     it('should coordinate both services correctly', async () => {
       vi.useFakeTimers()
 
-      const depositCheckSpy = vi.spyOn(runesBackend, 'checkDeposit')
-      const utxoSyncSpy = vi.spyOn(runesBackend, 'syncUtxos').mockResolvedValue()
       vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([])
 
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
       backgroundTaskManager.start()
 
       // Both should run initially
       await vi.advanceTimersByTimeAsync(100)
 
       // UTXO sync should have run
-      expect(utxoSyncSpy).toHaveBeenCalled()
+      expect(mockBackend.syncUtxos).toHaveBeenCalled()
 
       // Deposit monitor polls more frequently (30s vs 5min)
-      const initialDepositCalls = depositCheckSpy.mock.calls.length
+      const initialCheckCalls = vi.mocked(mockBackend.checkDeposit).mock.calls.length
 
       // Advance by 30 seconds - deposit monitor should run again
       await vi.advanceTimersByTimeAsync(30_000)
 
       // UTXO sync should not have run again (needs 5 minutes)
-      expect(utxoSyncSpy).toHaveBeenCalledTimes(1)
+      expect(mockBackend.syncUtxos).toHaveBeenCalledTimes(1)
 
       // Stop should cleanly stop both services
       backgroundTaskManager.stop()
@@ -184,16 +200,13 @@ describe('BackgroundTaskManager', () => {
         new Error('Database error')
       )
 
-      // UTXO sync should still work
-      const utxoSyncSpy = vi.spyOn(runesBackend, 'syncUtxos').mockResolvedValue()
-
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
       backgroundTaskManager.start()
 
       await vi.advanceTimersByTimeAsync(100)
 
       // UTXO sync should still have run despite deposit monitor error
-      expect(utxoSyncSpy).toHaveBeenCalled()
+      expect(mockBackend.syncUtxos).toHaveBeenCalled()
 
       // Both should still be running
       const status = backgroundTaskManager.getStatus()
@@ -207,7 +220,7 @@ describe('BackgroundTaskManager', () => {
   describe('lifecycle', () => {
     it('should allow restart after stop', () => {
       vi.useFakeTimers()
-      backgroundTaskManager = new BackgroundTaskManager(runesBackend, quoteRepo)
+      backgroundTaskManager = new BackgroundTaskManager(backendRegistry, quoteRepo)
 
       // Start
       backgroundTaskManager.start()

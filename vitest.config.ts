@@ -4,7 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: ['./tests/setup.ts'],
+    // Only use database setup for integration tests, not unit tests
+    setupFiles: [],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -19,5 +20,8 @@ export default defineConfig({
       ],
     },
     testTimeout: 10000,
+    // Workspace configuration for different test types
+    include: ['tests/**/*.test.ts'],
+    exclude: ['tests/integration/**/*.test.ts'],
   },
 })

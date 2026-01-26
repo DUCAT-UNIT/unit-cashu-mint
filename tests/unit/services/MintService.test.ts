@@ -3,7 +3,8 @@ import { MintService } from '../../../src/core/services/MintService.js'
 import { MintCrypto } from '../../../src/core/crypto/MintCrypto.js'
 import { KeyManager } from '../../../src/core/crypto/KeyManager.js'
 import { QuoteRepository } from '../../../src/database/repositories/QuoteRepository.js'
-import { RunesBackend } from '../../../src/runes/RunesBackend.js'
+import { BackendRegistry } from '../../../src/core/payment/BackendRegistry.js'
+import { IPaymentBackend } from '../../../src/core/payment/types.js'
 import { AmountMismatchError } from '../../../src/utils/errors.js'
 
 // Mock dependencies
@@ -24,11 +25,25 @@ vi.mock('../../../src/config/env.js', () => ({
   },
 }))
 
+// Mock backend for testing
+function createMockBackend(unit: string): IPaymentBackend {
+  return {
+    unit,
+    createDepositAddress: vi.fn().mockResolvedValue('tb1ptest123'),
+    checkDeposit: vi.fn(),
+    verifySpecificDeposit: vi.fn(),
+    estimateFee: vi.fn(),
+    withdraw: vi.fn(),
+    getBalance: vi.fn(),
+  }
+}
+
 describe('MintService', () => {
   let mintService: MintService
   let mockMintCrypto: MintCrypto
   let mockQuoteRepo: QuoteRepository
-  let mockRunesBackend: RunesBackend
+  let backendRegistry: BackendRegistry
+  let mockBackend: IPaymentBackend
   let mockKeyManager: KeyManager
 
   beforeEach(() => {
@@ -44,10 +59,9 @@ describe('MintService', () => {
       updateMintQuoteState: vi.fn(),
     } as unknown as QuoteRepository
 
-    mockRunesBackend = {
-      createDepositAddress: vi.fn().mockResolvedValue('tb1ptest123'),
-      checkDeposit: vi.fn(),
-    } as unknown as RunesBackend
+    backendRegistry = new BackendRegistry()
+    mockBackend = createMockBackend('unit')
+    backendRegistry.register(mockBackend)
 
     mockKeyManager = {
       getKeysetByRuneIdAndUnit: vi.fn().mockResolvedValue({ id: 'keyset123' }),
@@ -57,7 +71,7 @@ describe('MintService', () => {
     mintService = new MintService(
       mockMintCrypto,
       mockQuoteRepo,
-      mockRunesBackend,
+      backendRegistry,
       mockKeyManager
     )
   })
@@ -80,7 +94,7 @@ describe('MintService', () => {
       })
 
       // Deposit matches quote amount exactly
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 500n, // Exact match!
         txid: 'deposit_txid',
@@ -114,7 +128,7 @@ describe('MintService', () => {
       })
 
       // THE ACTUAL BUG SCENARIO: User sent 2000 but quote was for 500
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 2000n, // OVERPAYMENT!
         txid: '8f627a40614b7a7d38bad3c12dd7d0581aead57f917387ae210dd925ec1104df',
@@ -147,7 +161,7 @@ describe('MintService', () => {
       })
 
       // Underpayment
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 100n, // Only sent 100 instead of 500
         txid: 'underpayment_txid',
@@ -174,7 +188,7 @@ describe('MintService', () => {
       })
 
       // Deposit confirmed but amount undefined means not actually found
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: undefined, // No deposit found!
         confirmations: 6, // Has confirmations but no amount = not found
@@ -199,7 +213,7 @@ describe('MintService', () => {
       })
 
       // Unconfirmed deposit
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: false,
         amount: 500n,
         txid: 'unconfirmed_txid',
@@ -225,7 +239,7 @@ describe('MintService', () => {
         created_at: Date.now(),
       })
 
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 500n,
         txid: 'deposit_txid',
@@ -255,7 +269,7 @@ describe('MintService', () => {
         created_at: Date.now(),
       })
 
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 500n,
         txid: 'deposit_txid',
@@ -286,7 +300,7 @@ describe('MintService', () => {
       })
 
       // Deposit confirmed but wrong amount
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 2000n, // Wrong amount!
         txid: 'deposit_txid',
@@ -313,7 +327,7 @@ describe('MintService', () => {
         created_at: Date.now(),
       })
 
-      vi.mocked(mockRunesBackend.checkDeposit).mockResolvedValue({
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         amount: 500n, // Exact match!
         txid: 'deposit_txid',
@@ -324,7 +338,7 @@ describe('MintService', () => {
       const result = await mintService.getMintQuote(quoteId)
 
       expect(result.state).toBe('PAID')
-      expect(mockQuoteRepo.updateMintQuoteState).toHaveBeenCalledWith(quoteId, 'PAID')
+      expect(mockQuoteRepo.updateMintQuoteState).toHaveBeenCalledWith(quoteId, 'PAID', 'deposit_txid', 0)
     })
   })
 })

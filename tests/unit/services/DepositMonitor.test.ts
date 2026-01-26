@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { DepositMonitor } from '../../../src/services/DepositMonitor.js'
-import { MockRunesBackend } from '../../mocks/RunesBackend.mock.js'
+import { BackendRegistry } from '../../../src/core/payment/BackendRegistry.js'
+import { IPaymentBackend } from '../../../src/core/payment/types.js'
 import { QuoteRepository } from '../../../src/database/repositories/QuoteRepository.js'
 import { MintQuote } from '../../../src/core/models/Quote.js'
 import { MintQuoteState } from '../../../src/types/cashu.js'
@@ -16,16 +17,33 @@ vi.mock('../../../src/utils/logger.js', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    debug: vi.fn(),
   },
 }))
 
+// Mock backend for testing
+function createMockBackend(unit: string): IPaymentBackend {
+  return {
+    unit,
+    createDepositAddress: vi.fn(),
+    checkDeposit: vi.fn().mockResolvedValue({ confirmed: false, confirmations: 0 }),
+    verifySpecificDeposit: vi.fn(),
+    estimateFee: vi.fn(),
+    withdraw: vi.fn(),
+    getBalance: vi.fn(),
+  }
+}
+
 describe('DepositMonitor', () => {
   let depositMonitor: DepositMonitor
-  let runesBackend: MockRunesBackend
+  let backendRegistry: BackendRegistry
+  let mockBackend: IPaymentBackend
   let quoteRepo: QuoteRepository
 
   beforeEach(() => {
-    runesBackend = new MockRunesBackend()
+    backendRegistry = new BackendRegistry()
+    mockBackend = createMockBackend('sat')
+    backendRegistry.register(mockBackend)
     quoteRepo = new QuoteRepository()
   })
 
@@ -39,7 +57,7 @@ describe('DepositMonitor', () => {
   describe('start/stop', () => {
     it('should start monitoring', () => {
       vi.useFakeTimers()
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 1000,
         batchSize: 50,
         maxAge: 3600,
@@ -56,7 +74,7 @@ describe('DepositMonitor', () => {
 
     it('should not start if already running', () => {
       vi.useFakeTimers()
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo)
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo)
 
       depositMonitor.start()
       depositMonitor.start() // Second start should be ignored
@@ -69,7 +87,7 @@ describe('DepositMonitor', () => {
 
     it('should stop monitoring', () => {
       vi.useFakeTimers()
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo)
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo)
 
       depositMonitor.start()
       depositMonitor.stop()
@@ -100,9 +118,15 @@ describe('DepositMonitor', () => {
       const updateSpy = vi.spyOn(quoteRepo, 'updateMintQuoteState').mockResolvedValue()
 
       // Simulate a confirmed deposit
-      runesBackend.simulateDeposit('quote1', 'tb1ptest123', 100n)
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        amount: 100n,
+        txid: 'deposit_txid',
+        vout: 0,
+        confirmations: 6,
+      })
 
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
         batchSize: 50,
         maxAge: 3600,
@@ -113,8 +137,8 @@ describe('DepositMonitor', () => {
       // Wait for the async check to complete (don't use fake timers)
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      // Verify the quote state was updated
-      expect(updateSpy).toHaveBeenCalledWith('quote1', 'PAID')
+      // Verify the quote state was updated with txid and vout
+      expect(updateSpy).toHaveBeenCalledWith('quote1', 'PAID', 'deposit_txid', 0)
     })
 
     it('should not update quote if deposit not confirmed', async () => {
@@ -133,9 +157,13 @@ describe('DepositMonitor', () => {
       vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([mockQuote])
       const updateSpy = vi.spyOn(quoteRepo, 'updateMintQuoteState').mockResolvedValue()
 
-      // Don't simulate deposit - quote should remain UNPAID
+      // Return not confirmed
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
+        confirmed: false,
+        confirmations: 0,
+      })
 
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
         batchSize: 50,
         maxAge: 3600,
@@ -181,9 +209,7 @@ describe('DepositMonitor', () => {
         validQuote,
       ])
 
-      const checkDepositSpy = vi.spyOn(runesBackend, 'checkDeposit')
-
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
         batchSize: 50,
         maxAge: 3600,
@@ -193,8 +219,8 @@ describe('DepositMonitor', () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       // Should only check the valid quote
-      expect(checkDepositSpy).toHaveBeenCalledTimes(1)
-      expect(checkDepositSpy).toHaveBeenCalledWith('valid1', 'tb1pvalid')
+      expect(mockBackend.checkDeposit).toHaveBeenCalledTimes(1)
+      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('valid1', 'tb1pvalid')
     })
 
     it('should filter out quotes older than maxAge', async () => {
@@ -228,9 +254,7 @@ describe('DepositMonitor', () => {
         recentQuote,
       ])
 
-      const checkDepositSpy = vi.spyOn(runesBackend, 'checkDeposit')
-
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
         batchSize: 50,
         maxAge: 24 * 60 * 60, // 24 hours in seconds
@@ -240,8 +264,51 @@ describe('DepositMonitor', () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       // Should only check the recent quote
-      expect(checkDepositSpy).toHaveBeenCalledTimes(1)
-      expect(checkDepositSpy).toHaveBeenCalledWith('recent1', 'tb1precent')
+      expect(mockBackend.checkDeposit).toHaveBeenCalledTimes(1)
+      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('recent1', 'tb1precent')
+    })
+
+    it('should use correct backend for each quote unit', async () => {
+      const now = Date.now()
+      const btcBackend = createMockBackend('btc')
+      backendRegistry.register(btcBackend)
+
+      const satQuote: MintQuote = {
+        id: 'sat1',
+        amount: 100n,
+        unit: 'sat',
+        rune_id: '1527352:1',
+        request: 'tb1psat',
+        state: 'UNPAID' as MintQuoteState,
+        expiry: Math.floor(now / 1000) + 600,
+        created_at: now,
+      }
+
+      const btcQuote: MintQuote = {
+        id: 'btc1',
+        amount: 100n,
+        unit: 'btc',
+        rune_id: '',
+        request: 'tb1qbtc',
+        state: 'UNPAID' as MintQuoteState,
+        expiry: Math.floor(now / 1000) + 600,
+        created_at: now,
+      }
+
+      vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([satQuote, btcQuote])
+
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
+        pollInterval: 100,
+        batchSize: 50,
+        maxAge: 3600,
+      })
+
+      depositMonitor.start()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      // Each backend should have been called for its respective quote
+      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('sat1', 'tb1psat')
+      expect(btcBackend.checkDeposit).toHaveBeenCalledWith('btc1', 'tb1qbtc')
     })
   })
 
@@ -260,10 +327,10 @@ describe('DepositMonitor', () => {
       }
 
       vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([mockQuote])
-      vi.spyOn(runesBackend, 'checkDeposit').mockRejectedValue(new Error('API error'))
+      vi.mocked(mockBackend.checkDeposit).mockRejectedValue(new Error('API error'))
       const updateSpy = vi.spyOn(quoteRepo, 'updateMintQuoteState')
 
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
         batchSize: 50,
         maxAge: 3600,
@@ -282,7 +349,7 @@ describe('DepositMonitor', () => {
 
   describe('getStatus', () => {
     it('should return correct status', () => {
-      depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+      depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 5000,
         batchSize: 100,
         maxAge: 7200,
