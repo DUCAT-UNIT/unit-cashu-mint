@@ -546,13 +546,31 @@ If issues arise:
 
 ---
 
+## Implementation Status
+
+### Completed
+- [x] Phase 1: Payment Backend Abstraction (types.ts, BackendRegistry.ts, index.ts)
+- [x] Phase 2: Refactor RunesBackend (implements IPaymentBackend)
+- [x] Phase 3: Create BTCBackend (BTCBackend.ts, tx-builder.ts, types.ts)
+- [x] Phase 4: Update Configuration (env.ts with SUPPORTED_UNITS, BTC vars)
+- [x] Phase 5: Update DI Container (BackendRegistry registration)
+- [x] Phase 6: Update Core Services (MintService, MeltService)
+- [x] Phase 7: Update Background Services (DepositMonitor, UtxoSyncService)
+- [x] Phase 8: Update API (/v1/info, route validation)
+
+### Remaining
+- [ ] Phase 9: Database migration (add unit column to mint_utxos)
+- [ ] Phase 10: Testing (unit tests, integration tests)
+
+---
+
 ## Success Criteria
 
 - [ ] BTC deposits are detected and credited correctly
 - [ ] BTC withdrawals complete successfully
-- [ ] Runes functionality unchanged
-- [ ] `/v1/info` shows both units
-- [ ] Keysets are correctly separated by unit
-- [ ] No double-spend possible across units
-- [ ] All existing tests pass
-- [ ] New unit tests pass
+- [x] Runes functionality unchanged (code refactored but logic preserved)
+- [x] `/v1/info` shows both units (dynamic based on SUPPORTED_UNITS)
+- [x] Keysets are correctly separated by unit (already in keyset derivation)
+- [ ] No double-spend possible across units (needs testing)
+- [ ] All existing tests pass (needs database for testing)
+- [ ] New unit tests pass (needs implementation)
