@@ -9,7 +9,11 @@ import { SwapService } from '../core/services/SwapService.js'
 import { MeltService } from '../core/services/MeltService.js'
 import { CheckStateService } from '../core/services/CheckStateService.js'
 import { RunesBackend } from '../runes/RunesBackend.js'
+import { BTCBackend } from '../btc/BTCBackend.js'
+import { BackendRegistry } from '../core/payment/BackendRegistry.js'
 import { BackgroundTaskManager } from '../services/BackgroundTaskManager.js'
+import { env } from '../config/env.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Simple dependency injection container
@@ -56,16 +60,40 @@ export function initializeContainer(): DIContainer {
   container.register('keyManager', keyManager)
   container.register('mintCrypto', mintCrypto)
 
-  // Runes Backend
+  // Database pool
   const db = getPool()
-  const runesBackend = new RunesBackend(db)
 
-  container.register('runesBackend', runesBackend)
+  // Backend Registry - supports multiple payment backends
+  const backendRegistry = new BackendRegistry()
 
-  // Services
-  const mintService = new MintService(mintCrypto, quoteRepo, runesBackend, keyManager)
+  // Register Runes backend if 'sat' unit is enabled
+  if (env.SUPPORTED_UNITS_ARRAY.includes('sat')) {
+    const runesBackend = new RunesBackend(db)
+    backendRegistry.register(runesBackend)
+    container.register('runesBackend', runesBackend)
+    logger.info({ unit: 'sat' }, 'Registered Runes backend')
+  }
+
+  // Register BTC backend if 'btc' unit is enabled
+  if (env.SUPPORTED_UNITS_ARRAY.includes('btc')) {
+    const btcBackend = new BTCBackend({
+      mintAddress: env.MINT_BTC_ADDRESS!,
+      mintPubkey: env.MINT_BTC_PUBKEY || '',
+      feeRate: env.BTC_FEE_RATE,
+      network: env.NETWORK,
+      minConfirmations: env.MINT_CONFIRMATIONS,
+    })
+    backendRegistry.register(btcBackend)
+    container.register('btcBackend', btcBackend)
+    logger.info({ unit: 'btc' }, 'Registered BTC backend')
+  }
+
+  container.register('backendRegistry', backendRegistry)
+
+  // Services - now using backend registry
+  const mintService = new MintService(mintCrypto, quoteRepo, backendRegistry, keyManager)
   const swapService = new SwapService(mintCrypto, proofRepo)
-  const meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, runesBackend)
+  const meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, backendRegistry)
   const checkStateService = new CheckStateService(mintCrypto, proofRepo)
 
   container.register('mintService', mintService)
@@ -74,7 +102,7 @@ export function initializeContainer(): DIContainer {
   container.register('checkStateService', checkStateService)
 
   // Background tasks
-  const backgroundTasks = new BackgroundTaskManager(runesBackend, quoteRepo)
+  const backgroundTasks = new BackgroundTaskManager(backendRegistry, quoteRepo)
   container.register('backgroundTasks', backgroundTasks)
 
   return container

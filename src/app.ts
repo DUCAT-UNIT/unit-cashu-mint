@@ -63,6 +63,21 @@ export async function createServer() {
 
   // API routes
   server.get('/v1/info', async () => {
+    // Build methods list from supported units
+    const mintMethods = env.SUPPORTED_UNITS_ARRAY.map((unit) => ({
+      method: unit,
+      unit: unit,
+      min_amount: env.MIN_MINT_AMOUNT,
+      max_amount: env.MAX_MINT_AMOUNT,
+    }))
+
+    const meltMethods = env.SUPPORTED_UNITS_ARRAY.map((unit) => ({
+      method: unit,
+      unit: unit,
+      min_amount: env.MIN_MELT_AMOUNT,
+      max_amount: env.MAX_MELT_AMOUNT,
+    }))
+
     return {
       name: env.MINT_NAME,
       pubkey: env.MINT_PUBKEY,
@@ -75,25 +90,11 @@ export async function createServer() {
       motd: 'Welcome to Ducat UNIT Mint!',
       nuts: {
         '4': {
-          methods: [
-            {
-              method: 'unit',
-              unit: 'sat',
-              min_amount: env.MIN_MINT_AMOUNT,
-              max_amount: env.MAX_MINT_AMOUNT,
-            },
-          ],
+          methods: mintMethods,
           disabled: false,
         },
         '5': {
-          methods: [
-            {
-              method: 'unit',
-              unit: 'sat',
-              min_amount: env.MIN_MELT_AMOUNT,
-              max_amount: env.MAX_MELT_AMOUNT,
-            },
-          ],
+          methods: meltMethods,
           disabled: false,
         },
         '7': { supported: true },

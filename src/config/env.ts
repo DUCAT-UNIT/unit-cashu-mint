@@ -21,7 +21,15 @@ const envSchema = z.object({
   MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
   MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
   MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
-  SUPPORTED_RUNES: z.string(), // UNIT rune ID (840000:3)
+  SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (840000:3) - required if 'sat' unit enabled
+
+  // Multi-unit support
+  SUPPORTED_UNITS: z.string().default('sat'), // Comma-separated: 'btc', 'sat', or 'btc,sat'
+
+  // BTC Backend configuration (required if 'btc' in SUPPORTED_UNITS)
+  MINT_BTC_ADDRESS: z.string().optional(), // P2WPKH address for BTC deposits
+  MINT_BTC_PUBKEY: z.string().optional(), // Public key for BTC signing
+  BTC_FEE_RATE: z.string().default('5'), // sats/vbyte
 
   ENCRYPTION_KEY: z.string().length(64),
   JWT_SECRET: z.string(),
@@ -55,6 +63,20 @@ if (!parsed.success) {
   throw new Error('Invalid environment variables')
 }
 
+// Parse supported units
+const supportedUnits = parsed.data.SUPPORTED_UNITS.split(',').map((u) => u.trim())
+
+// Validate unit-specific configuration
+if (supportedUnits.includes('sat') && !parsed.data.SUPPORTED_RUNES) {
+  console.error('❌ SUPPORTED_RUNES is required when "sat" unit is enabled')
+  throw new Error('SUPPORTED_RUNES required for sat unit')
+}
+
+if (supportedUnits.includes('btc') && !parsed.data.MINT_BTC_ADDRESS) {
+  console.error('❌ MINT_BTC_ADDRESS is required when "btc" unit is enabled')
+  throw new Error('MINT_BTC_ADDRESS required for btc unit')
+}
+
 export const env = {
   ...parsed.data,
   PORT: parseInt(parsed.data.PORT),
@@ -66,7 +88,11 @@ export const env = {
   MAX_MELT_AMOUNT: parseInt(parsed.data.MAX_MELT_AMOUNT),
   MINT_CONFIRMATIONS: parseInt(parsed.data.MINT_CONFIRMATIONS),
   MELT_CONFIRMATIONS: parseInt(parsed.data.MELT_CONFIRMATIONS),
-  SUPPORTED_RUNES_ARRAY: parsed.data.SUPPORTED_RUNES.split(',').map((r) => r.trim()),
+  BTC_FEE_RATE: parseInt(parsed.data.BTC_FEE_RATE),
+  SUPPORTED_UNITS_ARRAY: supportedUnits,
+  SUPPORTED_RUNES_ARRAY: parsed.data.SUPPORTED_RUNES
+    ? parsed.data.SUPPORTED_RUNES.split(',').map((r) => r.trim())
+    : [],
   CORS_ORIGINS_ARRAY: parsed.data.CORS_ORIGINS
     ? parsed.data.CORS_ORIGINS.split(',').map((o) => o.trim())
     : undefined,

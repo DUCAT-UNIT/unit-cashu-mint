@@ -197,7 +197,7 @@ async function getDashboardStats(): Promise<DashboardStats> {
     })),
     uptime: process.uptime(),
     network: env.NETWORK,
-    runeId: env.SUPPORTED_RUNES,
+    runeId: env.SUPPORTED_RUNES || '',
     mintName: env.MINT_NAME,
   }
 }

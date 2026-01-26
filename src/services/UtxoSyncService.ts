@@ -1,4 +1,4 @@
-import { RunesBackend } from '../runes/RunesBackend.js'
+import { BackendRegistry } from '../core/payment/BackendRegistry.js'
 import { logger } from '../utils/logger.js'
 
 export interface UtxoSyncConfig {
@@ -19,7 +19,7 @@ export class UtxoSyncService {
   private intervalId: NodeJS.Timeout | null = null
 
   constructor(
-    private runesBackend: RunesBackend,
+    private backendRegistry: BackendRegistry,
     config?: Partial<UtxoSyncConfig>
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -75,7 +75,7 @@ export class UtxoSyncService {
   }
 
   /**
-   * Sync UTXOs from blockchain
+   * Sync UTXOs from blockchain for all backends that support it
    */
   private async syncUtxos(): Promise<void> {
     try {
@@ -83,7 +83,13 @@ export class UtxoSyncService {
 
       logger.info('Syncing UTXOs from blockchain')
 
-      await this.runesBackend.syncUtxos()
+      // Sync UTXOs for all backends that support it
+      for (const backend of this.backendRegistry.getAll()) {
+        if (backend.syncUtxos) {
+          logger.debug({ unit: backend.unit }, 'Syncing UTXOs for backend')
+          await backend.syncUtxos()
+        }
+      }
 
       const duration = Date.now() - startTime
 

@@ -1,11 +1,12 @@
 import { FastifyPluginAsync } from 'fastify'
 import { MeltService } from '../../core/services/MeltService.js'
+import { BackendRegistry } from '../../core/payment/BackendRegistry.js'
 import { Proof } from '../../types/cashu.js'
 
 interface MeltQuoteRequest {
   amount: number
   unit: string
-  rune_id: string
+  rune_id?: string // Optional - required for 'sat' unit only
   request: string // destination address
 }
 
@@ -16,10 +17,11 @@ interface MeltTokensRequest {
 
 export const meltRoutes: FastifyPluginAsync = async (fastify) => {
   const meltService = fastify.diContainer.resolve<MeltService>('meltService')
+  const backendRegistry = fastify.diContainer.resolve<BackendRegistry>('backendRegistry')
 
   /**
    * POST /v1/melt/quote/unit
-   * Create a melt quote for Runes withdrawal (NUT-05)
+   * Create a melt quote for withdrawal (NUT-05)
    */
   fastify.post<{ Body: MeltQuoteRequest }>(
     '/v1/melt/quote/unit',
@@ -34,15 +36,24 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Unit required' })
       }
 
-      if (!rune_id) {
-        return reply.code(400).send({ error: 'Rune ID required' })
+      // Validate unit is supported
+      if (!backendRegistry.has(unit)) {
+        return reply.code(400).send({ error: `Unsupported unit: ${unit}` })
+      }
+
+      // For 'sat' unit, rune_id is required
+      if (unit === 'sat' && !rune_id) {
+        return reply.code(400).send({ error: 'Rune ID required for sat unit' })
       }
 
       if (!destination) {
         return reply.code(400).send({ error: 'Destination address required' })
       }
 
-      const quote = await meltService.createMeltQuote(amount, unit, rune_id, destination)
+      // For 'btc' unit, use a placeholder rune_id
+      const effectiveRuneId = rune_id || 'btc:0'
+
+      const quote = await meltService.createMeltQuote(amount, unit, effectiveRuneId, destination)
       return reply.code(200).send(quote)
     }
   )

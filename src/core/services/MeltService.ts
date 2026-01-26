@@ -7,7 +7,7 @@ import { Proof, MeltQuoteResponse } from '../../types/cashu.js'
 import { AmountMismatchError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
-import { RunesBackend } from '../../runes/RunesBackend.js'
+import { BackendRegistry } from '../payment/BackendRegistry.js'
 
 export class MeltService {
   private p2pkService: P2PKService
@@ -16,7 +16,7 @@ export class MeltService {
     private mintCrypto: MintCrypto,
     private quoteRepo: QuoteRepository,
     private proofRepo: ProofRepository,
-    private runesBackend: RunesBackend
+    private backendRegistry: BackendRegistry
   ) {
     this.p2pkService = new P2PKService()
   }
@@ -158,20 +158,20 @@ export class MeltService {
       'Proofs locked, initiating Runes withdrawal'
     )
 
-    // 8. Initiate Runes withdrawal
+    // 8. Initiate withdrawal using the appropriate backend
     try {
-      const result = await this.runesBackend.sendRunes(
+      const backend = this.backendRegistry.get(quote.unit)
+      const result = await backend.withdraw(
         quote.request, // destination
-        BigInt(quote.amount),
-        quote.rune_id
+        BigInt(quote.amount)
       )
 
       // Update quote to PAID with txid
       await this.quoteRepo.updateMeltQuoteState(quoteId, 'PAID', result.txid)
 
       logger.info(
-        { quoteId, txid: result.txid, feePaid: result.fee_paid },
-        'Runes withdrawal completed - proofs permanently burned'
+        { quoteId, txid: result.txid, feePaid: result.fee_paid, unit: quote.unit },
+        'Withdrawal completed - proofs permanently burned'
       )
 
       return {
@@ -190,7 +190,7 @@ export class MeltService {
           quoteId,
           transactionId
         },
-        'Runes withdrawal failed - reverting proofs to unspent'
+        'Withdrawal failed - reverting proofs to unspent'
       )
 
       // Revert proofs to unspent by deleting them from database
@@ -204,7 +204,7 @@ export class MeltService {
         'Proofs reverted to unspent, user can retry melt'
       )
 
-      throw new Error('Runes withdrawal failed - your ecash tokens remain valid, please try again')
+      throw new Error('Withdrawal failed - your ecash tokens remain valid, please try again')
     }
   }
 

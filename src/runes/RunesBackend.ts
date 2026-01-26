@@ -5,7 +5,6 @@ import { RunesPsbtBuilder } from './psbt-builder.js'
 import { UtxoManager } from './UtxoManager.js'
 import { WalletKeyManager } from './WalletKeyManager.js'
 import {
-  RunesDepositStatus,
   RunesWithdrawalResult,
   DUCAT_UNIT_RUNE_ID,
   DUCAT_UNIT_RUNE_NAME,
@@ -14,28 +13,15 @@ import {
 } from './types.js'
 import { logger } from '../utils/logger.js'
 import { env } from '../config/env.js'
-
-/**
- * Payment backend interface for Runes
- */
-export interface IPaymentBackend {
-  createDepositAddress(quoteId: string, amount: bigint, runeId: string): Promise<string>
-  checkDeposit(quoteId: string, depositAddress: string, includeTracked?: boolean): Promise<RunesDepositStatus>
-  verifySpecificDeposit(quoteId: string, txid: string, vout: number): Promise<RunesDepositStatus>
-  estimateFee(destination: string, amount: bigint, runeId: string): Promise<number>
-  sendRunes(
-    destination: string,
-    amount: bigint,
-    runeId: string
-  ): Promise<RunesWithdrawalResult>
-  getBalance(runeId: string): Promise<bigint>
-}
+import { IPaymentBackend, DepositStatus, WithdrawalResult } from '../core/payment/types.js'
 
 /**
  * Main Runes backend implementation
  * Handles deposits, withdrawals, and UTXO management for the mint
  */
 export class RunesBackend implements IPaymentBackend {
+  readonly unit = 'sat'
+
   private ordClient: OrdClient
   private esploraClient: EsploraClient
   private utxoSelector: UtxoSelector
@@ -43,18 +29,26 @@ export class RunesBackend implements IPaymentBackend {
   private utxoManager: UtxoManager
   private walletKeyManager: WalletKeyManager
 
+  // Rune configuration
+  private runeId: string
+  private runeName: string
+
   // Mint addresses
   private taprootAddress: string
   private segwitAddress: string
   private taprootPubkey: string
 
-  constructor(db: Pool) {
+  constructor(db: Pool, runeId?: string, runeName?: string) {
     this.ordClient = new OrdClient()
     this.esploraClient = new EsploraClient()
     this.utxoSelector = new UtxoSelector(this.ordClient, this.esploraClient)
     this.psbtBuilder = new RunesPsbtBuilder(this.esploraClient)
     this.utxoManager = new UtxoManager(db)
     this.walletKeyManager = new WalletKeyManager()
+
+    // Use provided rune config or defaults
+    this.runeId = runeId || DUCAT_UNIT_RUNE_ID
+    this.runeName = runeName || DUCAT_UNIT_RUNE_NAME
 
     // Derive or load addresses
     if (env.MINT_TAPROOT_ADDRESS && env.MINT_SEGWIT_ADDRESS && env.MINT_TAPROOT_PUBKEY) {
@@ -90,10 +84,9 @@ export class RunesBackend implements IPaymentBackend {
    */
   async createDepositAddress(
     quoteId: string,
-    amount: bigint,
-    runeId: string
+    amount: bigint
   ): Promise<string> {
-    logger.info({ quoteId, amount: amount.toString(), runeId }, 'Creating deposit address')
+    logger.info({ quoteId, amount: amount.toString(), runeId: this.runeId }, 'Creating deposit address')
 
     // For simplicity, we use the mint's main taproot address
     // In production, you might want to derive unique addresses per quote
@@ -110,12 +103,12 @@ export class RunesBackend implements IPaymentBackend {
     quoteId: string,
     depositAddress: string,
     includeTracked: boolean = false
-  ): Promise<RunesDepositStatus> {
+  ): Promise<DepositStatus> {
     try {
       logger.info({ quoteId, depositAddress }, 'Checking deposit status')
 
       // Check if we've already recorded this deposit in the database
-      const existingDeposit = await this.utxoManager.getUnspentUtxos(DUCAT_UNIT_RUNE_ID)
+      const existingDeposit = await this.utxoManager.getUnspentUtxos(this.runeId)
 
       // Look for a UTXO that matches this quote
       // We need to check if there's a NEW deposit for this specific quote
@@ -135,7 +128,7 @@ export class RunesBackend implements IPaymentBackend {
 
       // Find DUCAT•UNIT•RUNE balance
       const ducatBalance = ordData.runes_balances.find(
-        ([name]) => name === DUCAT_UNIT_RUNE_NAME
+        ([name]) => name === this.runeName
       )
 
       if (!ducatBalance || ordData.outputs.length === 0) {
@@ -188,7 +181,7 @@ export class RunesBackend implements IPaymentBackend {
 
         // runes is a Record<string, {amount: string, id: string}>
         // Check if DUCAT•UNIT•RUNE is present by name
-        const unitRune = utxoDetails.runes[DUCAT_UNIT_RUNE_NAME]
+        const unitRune = utxoDetails.runes[this.runeName]
 
         if (!unitRune) {
           logger.debug({ txid, vout, availableRunes: Object.keys(utxoDetails.runes) }, 'UTXO does not have DUCAT•UNIT•RUNE, skipping')
@@ -250,7 +243,7 @@ export class RunesBackend implements IPaymentBackend {
     quoteId: string,
     txid: string,
     vout: number
-  ): Promise<RunesDepositStatus> {
+  ): Promise<DepositStatus> {
     try {
       logger.info({ quoteId, txid, vout }, 'Verifying specific deposit')
 
@@ -273,7 +266,7 @@ export class RunesBackend implements IPaymentBackend {
       }
 
       // Check for DUCAT•UNIT•RUNE
-      const unitRune = utxoDetails.runes[DUCAT_UNIT_RUNE_NAME]
+      const unitRune = utxoDetails.runes[this.runeName]
       if (!unitRune) {
         logger.warn({ quoteId, txid, vout, availableRunes: Object.keys(utxoDetails.runes) }, 'UTXO does not have DUCAT•UNIT•RUNE')
         return {
@@ -319,12 +312,22 @@ export class RunesBackend implements IPaymentBackend {
    */
   async estimateFee(
     _destination: string,
-    _amount: bigint,
-    _runeId: string
+    _amount: bigint
   ): Promise<number> {
     // For now, return a fixed fee
     // In production, could use dynamic fee estimation
     return 1000 // sats
+  }
+
+  /**
+   * Withdraw (send) Runes to a destination address
+   * Implements IPaymentBackend.withdraw()
+   */
+  async withdraw(
+    destination: string,
+    amount: bigint
+  ): Promise<WithdrawalResult> {
+    return this.sendRunes(destination, amount, this.runeId)
   }
 
   /**
@@ -357,7 +360,7 @@ export class RunesBackend implements IPaymentBackend {
         this.taprootAddress,
         this.segwitAddress,
         amount,
-        DUCAT_UNIT_RUNE_NAME,
+        this.runeName,
         parsedRuneId,
         spentUtxos
       )
@@ -412,7 +415,7 @@ export class RunesBackend implements IPaymentBackend {
           value: 10000, // RUNE_RETURN_SATS from PSBT builder
           address: this.taprootAddress,
           runeAmount: excessRunes,
-          runeName: DUCAT_UNIT_RUNE_NAME,
+          runeName: this.runeName,
           runeId: parsedRuneId,
         }
 
@@ -458,10 +461,24 @@ export class RunesBackend implements IPaymentBackend {
   }
 
   /**
-   * Get the mint's current balance for a specific rune
+   * Get the mint's current balance for the configured rune
    */
-  async getBalance(runeId: string): Promise<bigint> {
-    return this.utxoManager.getBalance(runeId)
+  async getBalance(): Promise<bigint> {
+    return this.utxoManager.getBalance(this.runeId)
+  }
+
+  /**
+   * Get the rune ID this backend is configured for
+   */
+  getRuneId(): string {
+    return this.runeId
+  }
+
+  /**
+   * Get the rune name this backend is configured for
+   */
+  getRuneName(): string {
+    return this.runeName
   }
 
   /**
@@ -486,8 +503,8 @@ export class RunesBackend implements IPaymentBackend {
         const outputData = await this.ordClient.getOutput(txid, vout)
 
         // Check if it has DUCAT•UNIT•RUNE
-        if (outputData.runes && outputData.runes[DUCAT_UNIT_RUNE_NAME]) {
-          const runeData = outputData.runes[DUCAT_UNIT_RUNE_NAME]
+        if (outputData.runes && outputData.runes[this.runeName]) {
+          const runeData = outputData.runes[this.runeName]
 
           // Parse rune ID from the data, or use the known DUCAT•UNIT•RUNE ID
           let runeId: RuneId
@@ -499,7 +516,7 @@ export class RunesBackend implements IPaymentBackend {
             }
           } else {
             // Use the known DUCAT•UNIT•RUNE ID
-            const [blockStr, txStr] = DUCAT_UNIT_RUNE_ID.split(':')
+            const [blockStr, txStr] = this.runeId.split(':')
             runeId = {
               block: BigInt(blockStr),
               tx: BigInt(txStr),
@@ -513,7 +530,7 @@ export class RunesBackend implements IPaymentBackend {
             value: outputData.value,
             address: this.taprootAddress,
             runeAmount: BigInt(runeData.amount),
-            runeName: DUCAT_UNIT_RUNE_NAME,
+            runeName: this.runeName,
             runeId,
           })
         }

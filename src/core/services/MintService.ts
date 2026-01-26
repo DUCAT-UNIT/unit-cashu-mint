@@ -8,13 +8,13 @@ import {
 } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
-import { RunesBackend } from '../../runes/RunesBackend.js'
+import { BackendRegistry } from '../payment/BackendRegistry.js'
 
 export class MintService {
   constructor(
     private mintCrypto: MintCrypto,
     private quoteRepo: QuoteRepository,
-    private runesBackend: RunesBackend,
+    private backendRegistry: BackendRegistry,
     private keyManager: KeyManager
   ) {}
 
@@ -57,12 +57,14 @@ export class MintService {
     // Generate quote ID
     const quoteId = randomBytes(32).toString('hex')
 
-    // Generate deposit address using Runes backend
+    // Get the appropriate backend for this unit
+    const backend = this.backendRegistry.get(unit)
+
+    // Generate deposit address using the backend
     // Amount is already in smallest units (integer)
-    const depositAddress = await this.runesBackend.createDepositAddress(
+    const depositAddress = await backend.createDepositAddress(
       quoteId,
-      BigInt(amount),
-      runeId
+      BigInt(amount)
     )
 
     // Set expiry (24 hours from now)
@@ -101,7 +103,8 @@ export class MintService {
     // If quote is still UNPAID, check for deposits
     if (quote.state === 'UNPAID') {
       try {
-        const depositStatus = await this.runesBackend.checkDeposit(quoteId, quote.request)
+        const backend = this.backendRegistry.get(quote.unit)
+        const depositStatus = await backend.checkDeposit(quoteId, quote.request)
 
         if (depositStatus.confirmed) {
           // CRITICAL: Verify actual Runes amount received matches quote amount
@@ -184,15 +187,18 @@ export class MintService {
       'Verifying deposit on-chain before minting'
     )
 
+    // Get the appropriate backend for this quote's unit
+    const backend = this.backendRegistry.get(quote.unit)
+
     // If quote has txid/vout stored, verify that specific UTXO directly
     // Otherwise fall back to scanning all UTXOs (for old quotes without txid/vout)
     let depositStatus
     if (quote.txid && quote.vout !== undefined) {
       // Verify the specific UTXO that was recorded when quote was marked PAID
-      depositStatus = await this.runesBackend.verifySpecificDeposit(quoteId, quote.txid, quote.vout)
+      depositStatus = await backend.verifySpecificDeposit(quoteId, quote.txid, quote.vout)
     } else {
       // Fall back to scanning all UTXOs (backwards compatibility)
-      depositStatus = await this.runesBackend.checkDeposit(quoteId, quote.request, true)
+      depositStatus = await backend.checkDeposit(quoteId, quote.request, true)
     }
 
     // Check confirmations meet minimum threshold

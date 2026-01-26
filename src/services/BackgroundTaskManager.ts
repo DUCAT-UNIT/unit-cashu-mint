@@ -1,6 +1,6 @@
 import { DepositMonitor } from './DepositMonitor.js'
 import { UtxoSyncService } from './UtxoSyncService.js'
-import { RunesBackend } from '../runes/RunesBackend.js'
+import { BackendRegistry } from '../core/payment/BackendRegistry.js'
 import { QuoteRepository } from '../database/repositories/QuoteRepository.js'
 import { logger } from '../utils/logger.js'
 
@@ -14,17 +14,17 @@ export class BackgroundTaskManager {
   private isStarted = false
 
   constructor(
-    runesBackend: RunesBackend,
+    backendRegistry: BackendRegistry,
     quoteRepo: QuoteRepository
   ) {
     // Initialize services with appropriate intervals
-    this.depositMonitor = new DepositMonitor(runesBackend, quoteRepo, {
+    this.depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
       pollInterval: 30_000, // 30 seconds - check deposits frequently
       batchSize: 50,
       maxAge: 24 * 60 * 60, // 24 hours
     })
 
-    this.utxoSyncService = new UtxoSyncService(runesBackend, {
+    this.utxoSyncService = new UtxoSyncService(backendRegistry, {
       syncInterval: 5 * 60 * 1000, // 5 minutes - sync UTXOs less frequently
     })
   }

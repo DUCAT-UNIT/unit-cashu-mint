@@ -1,4 +1,4 @@
-import { RunesBackend } from '../runes/RunesBackend.js'
+import { BackendRegistry } from '../core/payment/BackendRegistry.js'
 import { QuoteRepository } from '../database/repositories/QuoteRepository.js'
 import { logger } from '../utils/logger.js'
 
@@ -15,7 +15,7 @@ const DEFAULT_CONFIG: DepositMonitorConfig = {
 }
 
 /**
- * Background service that monitors for Runes deposits
+ * Background service that monitors for deposits (BTC and Runes)
  * Automatically updates quote states when deposits are confirmed
  */
 export class DepositMonitor {
@@ -24,7 +24,7 @@ export class DepositMonitor {
   private intervalId: NodeJS.Timeout | null = null
 
   constructor(
-    private runesBackend: RunesBackend,
+    private backendRegistry: BackendRegistry,
     private quoteRepo: QuoteRepository,
     config?: Partial<DepositMonitorConfig>
   ) {
@@ -119,7 +119,9 @@ export class DepositMonitor {
       // Check each quote for deposits
       for (const quote of quotesToCheck) {
         try {
-          const depositStatus = await this.runesBackend.checkDeposit(
+          // Get the appropriate backend for this quote's unit
+          const backend = this.backendRegistry.get(quote.unit)
+          const depositStatus = await backend.checkDeposit(
             quote.id,
             quote.request
           )
