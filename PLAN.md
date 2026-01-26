@@ -557,10 +557,11 @@ If issues arise:
 - [x] Phase 6: Update Core Services (MintService, MeltService)
 - [x] Phase 7: Update Background Services (DepositMonitor, UtxoSyncService)
 - [x] Phase 8: Update API (/v1/info, route validation)
+- [x] Phase 9: Database migration (003_add_unit_to_utxos.sql)
+- [x] Phase 10: Unit Tests (BackendRegistry, BTCBackend, BTCTxBuilder tests)
 
 ### Remaining
-- [ ] Phase 9: Database migration (add unit column to mint_utxos)
-- [ ] Phase 10: Testing (unit tests, integration tests)
+- [ ] Integration tests (requires database connection)
 
 ---
 
@@ -572,5 +573,5 @@ If issues arise:
 - [x] `/v1/info` shows both units (dynamic based on SUPPORTED_UNITS)
 - [x] Keysets are correctly separated by unit (already in keyset derivation)
 - [ ] No double-spend possible across units (needs testing)
-- [ ] All existing tests pass (needs database for testing)
-- [ ] New unit tests pass (needs implementation)
+- [x] All new unit tests pass (80 tests for multi-unit support)
+- [ ] All integration tests pass (requires database connection)
