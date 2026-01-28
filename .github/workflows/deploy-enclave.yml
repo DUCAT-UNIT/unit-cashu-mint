@@ -171,7 +171,7 @@ jobs:
               "",
               "# Start enclave",
               "source /opt/mint/config.env",
-              "FIRST_BOOT=${{ github.event.inputs.first_boot || '\''false'\'' }}",
+              "FIRST_BOOT=false",
               "export FIRST_BOOT",
               "",
               "nitro-cli run-enclave \\",
