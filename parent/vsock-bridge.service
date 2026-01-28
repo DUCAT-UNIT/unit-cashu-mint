@@ -1,0 +1,45 @@
+# systemd service unit for vsock bridge (Internet -> Enclave)
+#
+# This service uses socat to bridge TCP port 443 to the enclave's vsock port.
+# Alternative to HAProxy vsock backend if vsock support is not available.
+#
+# Traffic flow:
+#   Internet :443 -> socat -> vsock CID 16 port 8443 -> Enclave Nginx
+#
+# Install:
+#   sudo cp vsock-bridge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable vsock-bridge
+#   sudo systemctl start vsock-bridge
+
+[Unit]
+Description=vsock Bridge for Nitro Enclave TLS
+Documentation=https://github.com/aws/aws-nitro-enclaves-cli
+After=network.target nitro-enclaves-allocator.service
+Requires=nitro-enclaves-allocator.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Bridge TCP 443 to vsock CID 16 port 8443
+# CID 16 is the enclave, port 8443 is Nginx TLS listener
+ExecStart=/usr/bin/socat \
+    TCP-LISTEN:443,fork,reuseaddr \
+    VSOCK-CONNECT:16:8443
+
+# Restart on failure
+Restart=always
+RestartSec=5
+
+# Resource limits
+LimitNOFILE=65535
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

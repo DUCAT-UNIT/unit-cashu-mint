@@ -1,0 +1,40 @@
+# vsock-proxy configuration
+# Defines which hosts/ports the enclave is allowed to connect to via vsock
+#
+# Each entry allows traffic from the enclave to the specified destination.
+# This acts as a firewall for enclave egress traffic.
+
+# Allow list for vsock proxy connections
+allowlist:
+  # PostgreSQL database (running on parent)
+  - { host: localhost, port: 5432 }
+  - { host: 127.0.0.1, port: 5432 }
+
+  # Redis cache (running on parent)
+  - { host: localhost, port: 6379 }
+  - { host: 127.0.0.1, port: 6379 }
+
+  # AWS KMS endpoints (for secret unsealing)
+  - { host: kms.us-east-1.amazonaws.com, port: 443 }
+  - { host: kms.us-west-2.amazonaws.com, port: 443 }
+  - { host: kms.eu-west-1.amazonaws.com, port: 443 }
+
+  # Ord API (Bitcoin Runes indexer)
+  # Replace with your actual Ord endpoint
+  - { host: localhost, port: 8332 }
+  - { host: ord.yourdomain.tld, port: 443 }
+
+  # Esplora API (Bitcoin blockchain explorer)
+  # Replace with your actual Esplora endpoint
+  - { host: localhost, port: 8333 }
+  - { host: esplora.yourdomain.tld, port: 443 }
+  - { host: blockstream.info, port: 443 }
+  - { host: mempool.space, port: 443 }
+
+  # Mempool API
+  - { host: localhost, port: 8334 }
+  - { host: mempool.yourdomain.tld, port: 443 }
+
+  # ACM for Nitro Enclaves (certificate retrieval)
+  - { host: acm.us-east-1.amazonaws.com, port: 443 }
+  - { host: acm.us-west-2.amazonaws.com, port: 443 }

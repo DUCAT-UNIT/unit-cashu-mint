@@ -1,0 +1,74 @@
+# Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in your values
+#
+# Usage:
+#   cp terraform.tfvars.example terraform.tfvars
+#   # Edit terraform.tfvars with your values
+#   terraform init
+#   terraform plan
+#   terraform apply
+
+# =============================================================================
+# Required Variables
+# =============================================================================
+
+# AWS region for deployment
+aws_region = "us-east-1"
+
+# Deployment environment (dev, staging, prod)
+environment = "prod"
+
+# Domain name for the mint (must have Route53 zone or manual DNS)
+domain_name = "mint.yourdomain.tld"
+
+# EC2 key pair name for SSH access
+# Create one in AWS Console: EC2 -> Key Pairs -> Create key pair
+key_pair_name = "ducat-mint-key"
+
+# PostgreSQL password (minimum 16 characters)
+# Generate with: openssl rand -base64 24
+db_password = "CHANGE_THIS_TO_A_SECURE_PASSWORD"
+
+# =============================================================================
+# Instance Configuration
+# =============================================================================
+
+# Instance type (must support Nitro Enclaves)
+# Recommended: m5.xlarge (4 vCPU, 16 GB) for production
+# Options: m5.xlarge, m5.2xlarge, c5.xlarge, r5.xlarge, etc.
+instance_type = "m5.xlarge"
+
+# Enclave resource allocation
+# Memory in MiB (4096 = 4GB recommended)
+enclave_memory_mib = 4096
+
+# CPU cores for enclave (2 recommended)
+enclave_cpu_count = 2
+
+# =============================================================================
+# Security Configuration
+# =============================================================================
+
+# CIDR blocks allowed for SSH access
+# Leave empty to disable SSH (use SSM Session Manager instead)
+# Example: ["1.2.3.4/32", "5.6.7.8/32"]
+admin_cidr_blocks = []
+
+# PCR0 hash of the enclave image
+# Get this after building the EIF: nitro-cli describe-eif --eif-path mint.eif
+# Format: 96 hex characters (48 bytes)
+# IMPORTANT: Update this after every EIF build to maintain security
+enclave_pcr0_hash = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+# =============================================================================
+# Optional Configuration
+# =============================================================================
+
+# Enable CloudWatch logging
+enable_cloudwatch_logs = true
+
+# Database backup retention (days)
+backup_retention_days = 7
+
+# Enable detailed CloudWatch monitoring
+enable_monitoring = true

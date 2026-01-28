@@ -8,6 +8,12 @@ const envSchema = z.object({
   PORT: z.string().default('3000'),
   HOST: z.string().default('0.0.0.0'),
 
+  // Enclave mode flag - enables enclave-specific behavior
+  ENCLAVE_MODE: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+
   DATABASE_URL: z.string(),
   REDIS_URL: z.string().optional(),
 
