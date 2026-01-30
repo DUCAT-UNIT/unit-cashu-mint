@@ -66,24 +66,20 @@ describe('KeyManager', () => {
     it('should return private key for valid amount', async () => {
       const keyset = await keyManager.generateKeyset('840000:3', 'sat')
 
-      const privateKey = keyManager.getPrivateKey(keyset.id, 8)
+      const privateKey = await keyManager.getPrivateKey(keyset.id, 8)
 
       expect(privateKey).toBeDefined()
       expect(privateKey).toMatch(/^[0-9a-f]{64}$/) // 32 bytes hex
     })
 
-    it('should throw for invalid keyset', () => {
-      expect(() => {
-        keyManager.getPrivateKey('invalid_id', 8)
-      }).toThrow()
+    it('should throw for invalid keyset', async () => {
+      await expect(keyManager.getPrivateKey('invalid_id', 8)).rejects.toThrow()
     })
 
     it('should throw for invalid amount', async () => {
       const keyset = await keyManager.generateKeyset('840000:3', 'sat')
 
-      expect(() => {
-        keyManager.getPrivateKey(keyset.id, 999) // Invalid denomination
-      }).toThrow()
+      await expect(keyManager.getPrivateKey(keyset.id, 999)).rejects.toThrow()
     })
 
     it('should throw KeysetInactiveError for inactive keyset', async () => {
@@ -93,9 +89,7 @@ describe('KeyManager', () => {
       // Reload the keyset to get the updated inactive state
       await keyManager.loadKeyset(keyset.id)
 
-      expect(() => {
-        keyManager.getPrivateKey(keyset.id, 8)
-      }).toThrow('Keyset inactive')
+      await expect(keyManager.getPrivateKey(keyset.id, 8)).rejects.toThrow('Keyset inactive')
     })
   })
 
@@ -167,7 +161,7 @@ describe('KeyManager', () => {
       await newKeyManager.loadKeyset(keyset.id)
 
       // Should be able to get private key from cache
-      const privateKey = newKeyManager.getPrivateKey(keyset.id, 8)
+      const privateKey = await newKeyManager.getPrivateKey(keyset.id, 8)
       expect(privateKey).toBeDefined()
     })
   })

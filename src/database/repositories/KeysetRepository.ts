@@ -8,6 +8,10 @@ export class KeysetRepository {
       `
       INSERT INTO keysets (id, unit, rune_id, active, private_keys, public_keys, input_fee_ppk, final_expiry, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (id) DO UPDATE SET
+        active = EXCLUDED.active,
+        private_keys = EXCLUDED.private_keys,
+        public_keys = EXCLUDED.public_keys
       RETURNING *
     `,
       [

@@ -35,13 +35,13 @@ describe('MintCrypto', () => {
     keyManager = new KeyManager(keysetRepo)
     mintCrypto = new MintCrypto(keyManager)
 
-    // Generate a test keyset
+    // Generate a test keyset (uses upsert so safe with existing data)
     const keyset = await keyManager.generateKeyset('840000:3', 'sat')
     keysetId = keyset.id
   })
 
   describe('signBlindedMessage', () => {
-    it('should sign a blinded message', () => {
+    it('should sign a blinded message', async () => {
       const secret = randomBytes(32).toString('hex')
       const B_ = mintCrypto.hashSecret(secret)
 
@@ -51,7 +51,7 @@ describe('MintCrypto', () => {
         B_,
       }
 
-      const signature = mintCrypto.signBlindedMessage(message)
+      const signature = await mintCrypto.signBlindedMessage(message)
 
       expect(signature).toBeDefined()
       expect(signature.id).toBe(keysetId)
@@ -59,14 +59,14 @@ describe('MintCrypto', () => {
       expect(signature.C_).toMatch(/^[0-9a-f]{66}$/) // Compressed point
     })
 
-    it('should sign multiple messages', () => {
+    it('should sign multiple messages', async () => {
       const messages: BlindedMessage[] = [
         { id: keysetId, amount: 1, B_: mintCrypto.hashSecret(randomBytes(32).toString('hex')) },
         { id: keysetId, amount: 2, B_: mintCrypto.hashSecret(randomBytes(32).toString('hex')) },
         { id: keysetId, amount: 4, B_: mintCrypto.hashSecret(randomBytes(32).toString('hex')) },
       ]
 
-      const signatures = mintCrypto.signBlindedMessages(messages)
+      const signatures = await mintCrypto.signBlindedMessages(messages)
 
       expect(signatures.length).toBe(3)
       expect(signatures[0].amount).toBe(1)
