@@ -42,12 +42,14 @@ export interface IPaymentBackend {
    * @param quoteId - The quote ID
    * @param address - The deposit address to check
    * @param includeTracked - If true, also check already-tracked UTXOs
+   * @param expectedAmount - Expected amount for this quote (for exact UTXO matching)
    * @returns Deposit status
    */
   checkDeposit(
     quoteId: string,
     address: string,
-    includeTracked?: boolean
+    includeTracked?: boolean,
+    expectedAmount?: bigint
   ): Promise<DepositStatus>
 
   /**

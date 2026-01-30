@@ -48,14 +48,17 @@ export class BTCBackend implements IPaymentBackend {
 
   /**
    * Check if a BTC deposit has been received
+   * For BTC, we look for UTXOs that match the expected amount
+   * This handles the case where multiple quotes share the same deposit address
    */
   async checkDeposit(
     quoteId: string,
     address: string,
-    _includeTracked: boolean = false
+    _includeTracked: boolean = false,
+    expectedAmount?: bigint
   ): Promise<DepositStatus> {
     try {
-      logger.info({ quoteId, address }, 'Checking BTC deposit status')
+      logger.info({ quoteId, address, expectedAmount: expectedAmount?.toString() }, 'Checking BTC deposit status')
 
       // Get UTXOs at the deposit address
       const utxos = await this.esploraClient.getAddressUtxos(address)
@@ -70,7 +73,58 @@ export class BTCBackend implements IPaymentBackend {
       // Get current block height for confirmation calculation
       const blockHeight = await this.esploraClient.getBlockHeight()
 
-      // Find confirmed UTXOs and sum their values
+      // If expectedAmount is provided, look for a UTXO matching that exact amount
+      // This handles the shared-address case where multiple quotes use the same address
+      if (expectedAmount !== undefined) {
+        for (const utxo of utxos) {
+          const confirmations = utxo.status.confirmed && utxo.status.block_height
+            ? blockHeight - utxo.status.block_height + 1
+            : 0
+
+          if (BigInt(utxo.value) === expectedAmount && confirmations >= this.config.minConfirmations) {
+            logger.info(
+              {
+                quoteId,
+                amount: utxo.value.toString(),
+                txid: utxo.txid,
+                vout: utxo.vout,
+                confirmations,
+              },
+              'BTC deposit detected (exact amount match)'
+            )
+
+            return {
+              confirmed: true,
+              amount: BigInt(utxo.value),
+              txid: utxo.txid,
+              vout: utxo.vout,
+              confirmations,
+            }
+          }
+        }
+
+        // No exact match found - check for pending
+        for (const utxo of utxos) {
+          if (BigInt(utxo.value) === expectedAmount && !utxo.status.confirmed) {
+            logger.info(
+              { quoteId, amount: utxo.value.toString(), txid: utxo.txid },
+              'BTC deposit pending confirmation (exact amount match)'
+            )
+            return {
+              confirmed: false,
+              confirmations: 0,
+            }
+          }
+        }
+
+        // No UTXO matches the expected amount
+        return {
+          confirmed: false,
+          confirmations: 0,
+        }
+      }
+
+      // Fallback: sum all confirmed UTXOs (original behavior for backwards compatibility)
       let totalConfirmed = 0n
       let bestUtxo: { txid: string; vout: number; confirmations: number } | null = null
 
@@ -102,7 +156,7 @@ export class BTCBackend implements IPaymentBackend {
             vout: bestUtxo.vout,
             confirmations: bestUtxo.confirmations,
           },
-          'BTC deposit detected'
+          'BTC deposit detected (sum of all UTXOs)'
         )
 
         return {

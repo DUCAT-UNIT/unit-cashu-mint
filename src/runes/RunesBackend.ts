@@ -98,23 +98,21 @@ export class RunesBackend implements IPaymentBackend {
    * @param quoteId - The quote ID
    * @param depositAddress - The deposit address to check
    * @param includeTracked - If true, also check already-tracked UTXOs (for re-verification during minting)
+   * @param expectedAmount - Expected amount for exact UTXO matching (like BTC backend)
    */
   async checkDeposit(
     quoteId: string,
     depositAddress: string,
-    includeTracked: boolean = false
+    includeTracked: boolean = false,
+    expectedAmount?: bigint
   ): Promise<DepositStatus> {
     try {
-      logger.info({ quoteId, depositAddress }, 'Checking deposit status')
+      logger.info({ quoteId, depositAddress, expectedAmount: expectedAmount?.toString() }, 'Checking deposit status')
 
       // Check if we've already recorded this deposit in the database
       const existingDeposit = await this.utxoManager.getUnspentUtxos(this.runeId)
 
-      // Look for a UTXO that matches this quote
-      // We need to check if there's a NEW deposit for this specific quote
-      // For now, we'll check the database first to see if we already processed this
-
-      // Get address data from Ord to check for NEW outputs
+      // Get address data from Ord to check for outputs
       const ordData = await this.ordClient.getAddressOutputs(depositAddress)
 
       // Check if there are any runes balances
@@ -142,13 +140,65 @@ export class RunesBackend implements IPaymentBackend {
         }
       }
 
-      // Check each output to find one that's NOT already in our database
-      // (or include tracked UTXOs if re-verifying for minting)
       logger.info(
-        { quoteId, outputCount: ordData.outputs.length, includeTracked, trackedCount: existingDeposit.length },
+        { quoteId, outputCount: ordData.outputs.length, includeTracked, trackedCount: existingDeposit.length, expectedAmount: expectedAmount?.toString() },
         'Checking outputs for deposit'
       )
 
+      // If expectedAmount is provided, look for an unspent UTXO matching that exact amount
+      // This allows multiple quotes to share the same deposit address
+      if (expectedAmount !== undefined) {
+        for (const output of ordData.outputs) {
+          const [txid, voutStr] = output.split(':')
+          const vout = parseInt(voutStr, 10)
+
+          // Get UTXO details from Ord
+          const utxoDetails = await this.ordClient.getOutput(txid, vout)
+          if (!utxoDetails || !utxoDetails.runes || utxoDetails.spent) {
+            continue
+          }
+
+          const unitRune = utxoDetails.runes[this.runeName]
+          if (!unitRune) {
+            continue
+          }
+
+          const amount = BigInt(unitRune.amount)
+
+          // Check if amount matches expected
+          if (amount === expectedAmount) {
+            // Check confirmations
+            const tx = await this.esploraClient.getTransaction(txid)
+            const blockHeight = await this.esploraClient.getBlockHeight()
+            const confirmations = tx.status.confirmed && tx.status.block_height
+              ? blockHeight - tx.status.block_height + 1
+              : 0
+
+            if (confirmations >= env.MINT_CONFIRMATIONS) {
+              logger.info(
+                { quoteId, txid, vout, amount: amount.toString(), confirmations },
+                'Deposit detected (exact amount match)'
+              )
+
+              return {
+                confirmed: true,
+                amount,
+                txid,
+                vout,
+                confirmations,
+              }
+            }
+          }
+        }
+
+        // No exact match found
+        return {
+          confirmed: false,
+          confirmations: 0,
+        }
+      }
+
+      // Fallback: Original behavior - find any untracked UTXO (for backwards compatibility)
       for (const output of ordData.outputs) {
         const [txid, voutStr] = output.split(':')
         const vout = parseInt(voutStr, 10)
@@ -179,7 +229,6 @@ export class RunesBackend implements IPaymentBackend {
           continue
         }
 
-        // runes is a Record<string, {amount: string, id: string}>
         // Check if DUCAT•UNIT•RUNE is present by name
         const unitRune = utxoDetails.runes[this.runeName]
 
@@ -213,7 +262,7 @@ export class RunesBackend implements IPaymentBackend {
         }
       }
 
-      // No new deposits found
+      // No deposits found
       return {
         confirmed: false,
         confirmations: 0,

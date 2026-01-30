@@ -104,7 +104,8 @@ export class MintService {
     if (quote.state === 'UNPAID') {
       try {
         const backend = this.backendRegistry.get(quote.unit)
-        const depositStatus = await backend.checkDeposit(quoteId, quote.request)
+        // Pass expected amount for exact UTXO matching (helps BTC backend with shared addresses)
+        const depositStatus = await backend.checkDeposit(quoteId, quote.request, false, BigInt(quote.amount))
 
         if (depositStatus.confirmed) {
           // CRITICAL: Verify actual Runes amount received matches quote amount
@@ -197,8 +198,8 @@ export class MintService {
       // Verify the specific UTXO that was recorded when quote was marked PAID
       depositStatus = await backend.verifySpecificDeposit(quoteId, quote.txid, quote.vout)
     } else {
-      // Fall back to scanning all UTXOs (backwards compatibility)
-      depositStatus = await backend.checkDeposit(quoteId, quote.request, true)
+      // Fall back to scanning all UTXOs with expected amount for exact matching
+      depositStatus = await backend.checkDeposit(quoteId, quote.request, true, BigInt(quote.amount))
     }
 
     // Check confirmations meet minimum threshold

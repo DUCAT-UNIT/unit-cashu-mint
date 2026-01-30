@@ -52,6 +52,7 @@ export interface OrdAddressResponse {
 export interface OrdOutputResponse {
   transaction: string
   value: number
+  spent: boolean
   runes?: Record<string, {
     amount: string
     id: string // "block:tx"
