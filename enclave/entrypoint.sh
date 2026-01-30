@@ -3,265 +3,276 @@
 # Orchestrates the boot sequence for the Ducat Cashu Mint inside AWS Nitro Enclave
 #
 # Boot sequence:
-# 1. Start vsock adapters (enables TCP over vsock to parent services)
-# 2. Wait for vsock connectivity
-# 3. Unseal secrets via KMS attestation
+# 1. Setup loopback and vsock adapters
+# 2. Unseal secrets via KMS attestation
+# 3. Start Nginx for TLS termination
 # 4. Start Node.js mint server
-# 5. Start Nginx for TLS termination
 #
-# Environment:
-# - VSOCK_CID: Parent CID (default: 3)
-# - KMS_KEY_ID: KMS key ARN for secret unsealing
-# - FIRST_BOOT: Set to "true" to generate new secrets
+# Security model:
+# - TLS terminated inside enclave (parent sees only encrypted bytes)
+# - Secrets unsealed via KMS with PCR attestation
+# - Parent cannot access plaintext HTTP or private keys
 
 set -euo pipefail
 
 # Configuration
-VSOCK_CID="${VSOCK_CID:-3}"
-MINT_PORT="${MINT_PORT:-3338}"
-LOG_LEVEL="${LOG_LEVEL:-info}"
+PARENT_CID="${PARENT_CID:-3}"
+MINT_PORT="${PORT:-3338}"
+HTTPS_PORT="${HTTPS_PORT:-8443}"
 
 # Logging functions
 log_info() {
-    echo "[$(date -Iseconds)] [INFO] $*"
+    echo "[enclave] [INFO] $*"
 }
 
 log_error() {
-    echo "[$(date -Iseconds)] [ERROR] $*" >&2
+    echo "[enclave] [ERROR] $*" >&2
 }
 
 log_debug() {
-    if [[ "${LOG_LEVEL}" == "debug" ]]; then
-        echo "[$(date -Iseconds)] [DEBUG] $*"
-    fi
+    echo "[enclave] [DEBUG] $*"
 }
 
 # Trap for cleanup on exit
 cleanup() {
-    log_info "Shutting down enclave services..."
-
-    # Stop Node.js gracefully
-    if [[ -n "${NODE_PID:-}" ]]; then
-        kill -TERM "$NODE_PID" 2>/dev/null || true
-        wait "$NODE_PID" 2>/dev/null || true
-    fi
-
-    # Stop vsock adapters
-    pkill -f vsock-adapter || true
-
-    log_info "Enclave shutdown complete"
+    log_info "Shutting down enclave..."
+    pkill -f nginx || true
+    pkill -f socat || true
+    pkill -f node || true
 }
 trap cleanup EXIT INT TERM
 
 # ============================================================================
-# Step 1: Start vsock adapters
-# These create localhost listeners that forward traffic to parent via vsock
+# Step 1: Setup loopback interface
+# ============================================================================
+log_info "Enclave starting..."
+log_debug "PARENT_CID: ${PARENT_CID}"
+
+log_info "Setting up loopback interface..."
+ip link set lo up || ifconfig lo up || {
+    log_error "Failed to bring up loopback interface"
+    echo "1" > /proc/sys/net/ipv4/conf/all/accept_local 2>/dev/null || true
+}
+ip addr show lo 2>/dev/null || ifconfig lo 2>/dev/null || log_debug "Cannot show loopback"
+
+log_debug "Checking if /dev/vsock exists..."
+if [[ -e /dev/vsock ]]; then
+    log_info "/dev/vsock exists"
+else
+    log_error "/dev/vsock does NOT exist!"
+fi
+
+# ============================================================================
+# Step 2: Start vsock adapters
 # ============================================================================
 log_info "Starting vsock adapters..."
 
-# PostgreSQL: localhost:5432 -> vsock:5432
-/app/vsock-adapter.sh "$VSOCK_CID" 5432 5432 &
-VSOCK_PG_PID=$!
-log_debug "PostgreSQL vsock adapter started (PID: $VSOCK_PG_PID)"
+# PostgreSQL: enclave localhost:5432 -> parent vsock:5432 -> parent postgres
+socat TCP-LISTEN:5432,bind=127.0.0.1,fork,reuseaddr VSOCK-CONNECT:${PARENT_CID}:5432 2>&1 &
+log_info "PostgreSQL vsock adapter started"
 
-# Redis: localhost:6379 -> vsock:6379
-/app/vsock-adapter.sh "$VSOCK_CID" 6379 6379 &
-VSOCK_REDIS_PID=$!
-log_debug "Redis vsock adapter started (PID: $VSOCK_REDIS_PID)"
+# KMS API: kmstool-enclave-cli uses vsock directly to reach the parent's vsock-proxy
+# on port 8000, which forwards to kms.<region>.amazonaws.com:443.
+# No TCP-to-vsock adapter needed here - the SDK handles vsock natively.
+log_info "KMS access via kmstool-enclave-cli vsock (proxy port 8000)"
 
-# KMS: localhost:8443 -> vsock:443 (for KMS API calls)
-/app/vsock-adapter.sh "$VSOCK_CID" 443 8443 &
-VSOCK_KMS_PID=$!
-log_debug "KMS vsock adapter started (PID: $VSOCK_KMS_PID)"
+# NOTE: External HTTPS APIs (Ord, Esplora, Mempool) require an HTTP proxy on the parent
+# because the enclave cannot resolve DNS. Options:
+# 1. Run tinyproxy on parent and configure NODE_EXTRA_CA_CERTS + HTTPS_PROXY
+# 2. Run a sidecar API service on parent that proxies requests
+# 3. Use the parent's vsock-proxy for specific pre-resolved IPs (not recommended)
+# For now, external API calls will fail - implement option 1 or 2 for production.
 
-# Ord/Esplora: localhost:8332 -> vsock:8332
-/app/vsock-adapter.sh "$VSOCK_CID" 8332 8332 &
-VSOCK_ORD_PID=$!
-log_debug "Ord vsock adapter started (PID: $VSOCK_ORD_PID)"
+# Inbound HTTPS: parent vsock:${HTTPS_PORT} -> enclave nginx:${HTTPS_PORT}
+# This allows parent to forward raw TCP (encrypted TLS) to the enclave
+socat VSOCK-LISTEN:${HTTPS_PORT},fork TCP:127.0.0.1:${HTTPS_PORT} 2>&1 &
+log_info "Inbound HTTPS vsock listener started on port ${HTTPS_PORT}"
 
-# Esplora: localhost:8333 -> vsock:8333
-/app/vsock-adapter.sh "$VSOCK_CID" 8333 8333 &
-VSOCK_ESPLORA_PID=$!
-log_debug "Esplora vsock adapter started (PID: $VSOCK_ESPLORA_PID)"
+sleep 2
 
-# Mempool: localhost:8334 -> vsock:8334
-/app/vsock-adapter.sh "$VSOCK_CID" 8334 8334 &
-VSOCK_MEMPOOL_PID=$!
-log_debug "Mempool vsock adapter started (PID: $VSOCK_MEMPOOL_PID)"
-
-# ============================================================================
-# Step 2: Wait for vsock connectivity
-# ============================================================================
-log_info "Waiting for vsock connectivity..."
-
-# Wait for PostgreSQL to be reachable
+# Verify PostgreSQL connectivity
+log_info "Checking PostgreSQL connectivity..."
 RETRY_COUNT=0
-MAX_RETRIES=30
-until nc -z localhost 5432 2>/dev/null; do
+MAX_RETRIES=10
+while ! timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/5432" 2>/dev/null; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
-        log_error "PostgreSQL not reachable after $MAX_RETRIES attempts"
-        exit 1
+        log_error "PostgreSQL not reachable via vsock after $MAX_RETRIES attempts"
+        log_info "Continuing anyway..."
+        break
     fi
-    log_debug "Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
+    log_info "Waiting for PostgreSQL connectivity... ($RETRY_COUNT/$MAX_RETRIES)"
     sleep 1
 done
-log_info "PostgreSQL connection established"
+
+if [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; then
+    log_info "PostgreSQL vsock connection established"
+fi
 
 # ============================================================================
 # Step 3: Unseal secrets via KMS attestation
 # ============================================================================
-log_info "Unsealing secrets via KMS attestation..."
+log_info "Unsealing secrets..."
 
-# Source the unseal script which sets environment variables
-# On first boot, generates new secrets and seals them
-# On subsequent boots, retrieves and decrypts existing secrets
-source /app/unseal-secrets.sh
+# Check for KMS key - if not set, fall back to dev mode
+KMS_KEY_ID="${KMS_KEY_ID:-}"
+FIRST_BOOT="${FIRST_BOOT:-false}"
 
-if [[ -z "${MINT_SEED:-}" ]] || [[ -z "${ENCRYPTION_KEY:-}" ]]; then
-    log_error "Failed to unseal secrets - MINT_SEED or ENCRYPTION_KEY not set"
-    exit 1
-fi
+if [[ -n "$KMS_KEY_ID" ]]; then
+    log_info "KMS key configured, using attestation-based unsealing"
 
-log_info "Secrets unsealed successfully"
+    # Source the unsealing script (it exports MINT_SEED and ENCRYPTION_KEY)
+    source /app/unseal-secrets.sh
 
-# ============================================================================
-# Step 4: Initialize ACM certificate (for TLS termination)
-# ============================================================================
-log_info "Initializing ACM certificate..."
-
-# ACM for Nitro Enclaves automatically fetches certificate
-# The certificate is stored in /run/acm/ and private key accessible via PKCS#11
-if [[ -f /etc/nitro_enclaves/acm.yaml ]]; then
-    nitro-cli acm &
-    sleep 2
-
-    if [[ -f /run/acm/cert.pem ]]; then
-        log_info "ACM certificate loaded successfully"
-    else
-        log_error "ACM certificate not found at /run/acm/cert.pem"
-        # Continue without TLS for development/testing
-        log_info "Continuing without ACM certificate (development mode)"
+    if [[ -z "${MINT_SEED:-}" ]] || [[ -z "${ENCRYPTION_KEY:-}" ]]; then
+        log_error "Failed to unseal secrets from KMS"
+        exit 1
     fi
+    log_info "Secrets unsealed successfully via KMS attestation"
 else
-    log_info "ACM configuration not found - running without TLS (development mode)"
+    log_info "KMS not configured - using development mode"
+
+    # Development mode: use provided env vars or fixed dev keys
+    # Using fixed keys allows decrypting keysets created by the host mint
+    if [[ -z "${MINT_SEED:-}" ]]; then
+        log_info "Using development MINT_SEED (dev mode only - DO NOT USE IN PRODUCTION)"
+        export MINT_SEED="0000000000000000000000000000000000000000000000000000000000000000"
+    fi
+
+    if [[ -z "${ENCRYPTION_KEY:-}" ]]; then
+        log_info "Using development ENCRYPTION_KEY (dev mode only - DO NOT USE IN PRODUCTION)"
+        export ENCRYPTION_KEY="0000000000000000000000000000000000000000000000000000000000000000"
+    fi
 fi
 
 # ============================================================================
-# Step 5: Prepare environment file for Node.js
+# Step 4: Set up environment variables
 # ============================================================================
-log_info "Preparing environment configuration..."
+log_info "Setting up environment..."
 
-# Create runtime .env file with unsealed secrets
-cat > /app/.env << EOF
-# Enclave Runtime Configuration
-# Generated at $(date -Iseconds)
+export NODE_ENV="production"
+export PORT="${MINT_PORT}"
+export HOST="127.0.0.1"
+export ENCLAVE_MODE="true"
 
-NODE_ENV=${NODE_ENV:-production}
-PORT=${MINT_PORT}
-HOST=127.0.0.1
-ENCLAVE_MODE=true
+# Database URL - uses localhost which routes through vsock
+export DATABASE_URL="${DATABASE_URL:-postgresql://mintuser:4Mdk+N7JcVgrByWJGMCtSzx3b3IsMndJ@127.0.0.1:5432/mintdb}"
 
-# Database (via vsock)
-DATABASE_URL=${DATABASE_URL:-postgresql://mintuser:password@localhost:5432/mintdb}
-REDIS_URL=${REDIS_URL:-redis://localhost:6379}
+# Network configuration
+export NETWORK="${NETWORK:-testnet}"
+export ESPLORA_URL="${ESPLORA_URL:-https://mempool.space/testnet/api}"
+export ORD_URL="${ORD_URL:-https://testnet.ordinals.com}"
+export MEMPOOL_URL="${MEMPOOL_URL:-https://mempool.space/testnet/api}"
 
-# Bitcoin network
-NETWORK=${NETWORK:-mainnet}
-ESPLORA_URL=http://localhost:8333
-ORD_URL=http://localhost:8332
-MEMPOOL_URL=http://localhost:8334
+# JWT secret - derive from MINT_SEED if not provided
+export JWT_SECRET="${JWT_SECRET:-$(echo -n "${MINT_SEED}jwt" | openssl dgst -sha256 | cut -d' ' -f2)}"
 
-# Unsealed secrets
-MINT_SEED=${MINT_SEED}
-ENCRYPTION_KEY=${ENCRYPTION_KEY}
-JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
+# Mint pubkey - will be derived from seed by the application
+export MINT_PUBKEY="${MINT_PUBKEY:-}"
 
-# Mint configuration
-MINT_PUBKEY=${MINT_PUBKEY:-}
-MINT_TAPROOT_ADDRESS=${MINT_TAPROOT_ADDRESS:-}
-MINT_TAPROOT_PUBKEY=${MINT_TAPROOT_PUBKEY:-}
-MINT_SEGWIT_ADDRESS=${MINT_SEGWIT_ADDRESS:-}
-SUPPORTED_RUNES=${SUPPORTED_RUNES:-}
-SUPPORTED_UNITS=${SUPPORTED_UNITS:-sat}
-MINT_BTC_ADDRESS=${MINT_BTC_ADDRESS:-}
-MINT_BTC_PUBKEY=${MINT_BTC_PUBKEY:-}
-BTC_FEE_RATE=${BTC_FEE_RATE:-5}
-
-# Logging
-LOG_LEVEL=${LOG_LEVEL}
+# Units configuration
+export SUPPORTED_UNITS="${SUPPORTED_UNITS:-sat}"
+export SUPPORTED_RUNES="${SUPPORTED_RUNES:-840000:3}"
 
 # Rate limiting
-RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
-RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60000}
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+export RATE_LIMIT_MAX="${RATE_LIMIT_MAX:-100}"
+export RATE_LIMIT_WINDOW="${RATE_LIMIT_WINDOW:-60000}"
 
 # Mint info
-MINT_NAME=${MINT_NAME:-Ducat Cashu Mint}
-MINT_DESCRIPTION=${MINT_DESCRIPTION:-Secure Cashu mint running in AWS Nitro Enclave}
+export MINT_NAME="${MINT_NAME:-Ducat Cashu Mint}"
+export MINT_DESCRIPTION="${MINT_DESCRIPTION:-Secure Cashu mint running in AWS Nitro Enclave}"
 
-# Amount limits
-MIN_MINT_AMOUNT=${MIN_MINT_AMOUNT:-100}
-MAX_MINT_AMOUNT=${MAX_MINT_AMOUNT:-100000000}
-MIN_MELT_AMOUNT=${MIN_MELT_AMOUNT:-100}
-MAX_MELT_AMOUNT=${MAX_MELT_AMOUNT:-100000000}
+# Limits
+export MIN_MINT_AMOUNT="${MIN_MINT_AMOUNT:-100}"
+export MAX_MINT_AMOUNT="${MAX_MINT_AMOUNT:-100000000}"
+export MIN_MELT_AMOUNT="${MIN_MELT_AMOUNT:-100}"
+export MAX_MELT_AMOUNT="${MAX_MELT_AMOUNT:-100000000}"
+export MINT_CONFIRMATIONS="${MINT_CONFIRMATIONS:-1}"
+export MELT_CONFIRMATIONS="${MELT_CONFIRMATIONS:-1}"
 
-# Confirmations
-MINT_CONFIRMATIONS=${MINT_CONFIRMATIONS:-1}
-MELT_CONFIRMATIONS=${MELT_CONFIRMATIONS:-1}
-EOF
-
-chmod 600 /app/.env
-log_debug "Environment file created at /app/.env"
+# Log configuration (without secrets)
+log_info "Configuration:"
+log_info "  PORT: ${PORT}"
+log_info "  HTTPS_PORT: ${HTTPS_PORT}"
+log_info "  NODE_ENV: ${NODE_ENV}"
+log_info "  DATABASE_URL: postgresql://mintuser:***@127.0.0.1:5432/mintdb"
+log_info "  NETWORK: ${NETWORK}"
+log_info "  KMS_KEY_ID: ${KMS_KEY_ID:-not configured}"
 
 # ============================================================================
-# Step 6: Start Node.js mint server
+# Step 5: Setup TLS certificates
+# ============================================================================
+log_info "Setting up TLS certificates..."
+
+ACM_CERT_ARN="${ACM_CERT_ARN:-}"
+
+if [[ -n "$ACM_CERT_ARN" ]]; then
+    log_info "Using ACM for Nitro Enclaves certificate"
+
+    # Start the ACM agent to provision certificate
+    /usr/bin/nitro-enclaves-acm &
+    ACM_PID=$!
+
+    # Wait for certificate to be provisioned
+    CERT_WAIT=0
+    while [[ ! -f /run/acm/cert.pem ]] && [[ $CERT_WAIT -lt 30 ]]; do
+        sleep 1
+        CERT_WAIT=$((CERT_WAIT + 1))
+    done
+
+    if [[ -f /run/acm/cert.pem ]]; then
+        log_info "ACM certificate provisioned"
+    else
+        log_error "Failed to provision ACM certificate"
+        exit 1
+    fi
+else
+    log_info "ACM not configured - generating self-signed certificate (dev mode)"
+
+    # Generate self-signed cert for development
+    mkdir -p /run/acm
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /run/acm/key.pem \
+        -out /run/acm/cert.pem \
+        -subj "/CN=localhost" \
+        2>/dev/null
+
+    log_info "Self-signed certificate generated"
+fi
+
+# ============================================================================
+# Step 6: Configure and start Nginx for TLS termination
+# ============================================================================
+log_info "Starting Nginx for TLS termination..."
+
+# Check if we're using ACM (PKCS#11) or self-signed (file-based key)
+if [[ -n "$ACM_CERT_ARN" ]]; then
+    # ACM mode: nginx.conf already configured for PKCS#11
+    log_info "Using ACM PKCS#11 for TLS"
+else
+    # Self-signed mode: update nginx config to use file-based key
+    log_info "Using file-based TLS key"
+    sed -i 's|ssl_certificate_key engine:pkcs11:pkcs11:token=acm;|ssl_certificate_key /run/acm/key.pem;|' /etc/nginx/nginx.conf
+fi
+
+# Test nginx config
+nginx -t 2>&1 || {
+    log_error "Nginx configuration test failed"
+    cat /etc/nginx/nginx.conf
+    exit 1
+}
+
+# Start nginx
+nginx
+log_info "Nginx started on port ${HTTPS_PORT}"
+
+# ============================================================================
+# Step 7: Start Node.js mint server
 # ============================================================================
 log_info "Starting Node.js mint server on port ${MINT_PORT}..."
 
 cd /app
-node dist/server.js &
-NODE_PID=$!
 
-# Wait for Node.js to be ready
-RETRY_COUNT=0
-MAX_RETRIES=30
-until curl -sf http://127.0.0.1:${MINT_PORT}/health > /dev/null 2>&1; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [[ $RETRY_COUNT -ge $MAX_RETRIES ]]; then
-        log_error "Node.js server failed to start after $MAX_RETRIES attempts"
-        exit 1
-    fi
-
-    # Check if process is still running
-    if ! kill -0 "$NODE_PID" 2>/dev/null; then
-        log_error "Node.js process died unexpectedly"
-        exit 1
-    fi
-
-    log_debug "Waiting for Node.js server... ($RETRY_COUNT/$MAX_RETRIES)"
-    sleep 1
-done
-
-log_info "Node.js mint server started successfully (PID: $NODE_PID)"
-
-# ============================================================================
-# Step 7: Start Nginx for TLS termination
-# ============================================================================
-log_info "Starting Nginx for TLS termination..."
-
-# Test Nginx configuration
-nginx -t 2>/dev/null || {
-    log_error "Nginx configuration test failed"
-    nginx -t
-    exit 1
-}
-
-# Start Nginx in foreground (keeps entrypoint running)
-log_info "Enclave boot complete - all services running"
-log_info "  - Node.js mint: http://127.0.0.1:${MINT_PORT}"
-log_info "  - Nginx TLS: vsock:8443"
-log_info "  - PostgreSQL: localhost:5432 (via vsock)"
-log_info "  - Redis: localhost:6379 (via vsock)"
-
-# Run Nginx in foreground
-exec nginx -g 'daemon off;'
+# Run node with the compiled JavaScript
+exec node dist/server.js

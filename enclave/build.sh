@@ -20,6 +20,11 @@ EIF_NAME="mint-enclave.eif"
 DOCKER_IMAGE="mint-enclave:latest"
 DEBUG_MODE=""
 
+# KMS configuration (can be overridden via environment)
+KMS_KEY_ID="${KMS_KEY_ID:-}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+FIRST_BOOT="${FIRST_BOOT:-false}"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -85,9 +90,24 @@ npm run build
 # Step 2: Build Docker image
 log_info "Building Docker image..."
 
-docker build \
+# Pass KMS configuration as build args
+DOCKER_BUILD_ARGS=""
+if [[ -n "$KMS_KEY_ID" ]]; then
+    log_info "KMS Key ID: $KMS_KEY_ID"
+    DOCKER_BUILD_ARGS="$DOCKER_BUILD_ARGS --build-arg KMS_KEY_ID=$KMS_KEY_ID"
+fi
+if [[ -n "$AWS_REGION" ]]; then
+    DOCKER_BUILD_ARGS="$DOCKER_BUILD_ARGS --build-arg AWS_REGION=$AWS_REGION"
+fi
+if [[ "$FIRST_BOOT" == "true" ]]; then
+    log_info "Building for FIRST BOOT (will generate and seal new secrets)"
+    DOCKER_BUILD_ARGS="$DOCKER_BUILD_ARGS --build-arg FIRST_BOOT=true"
+fi
+
+docker build --no-cache \
     -t "$DOCKER_IMAGE" \
     -f enclave/Dockerfile \
+    $DOCKER_BUILD_ARGS \
     .
 
 log_info "Docker image built: $DOCKER_IMAGE"
