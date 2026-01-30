@@ -1,0 +1,24 @@
+[Unit]
+Description=Mint Enclave external HTTPS proxy (for Ord/Esplora APIs)
+After=network.target
+
+# NOTE: This service is DISABLED because vsock-proxy requires a single destination host.
+# External API calls (Ord, Esplora, Mempool) require an HTTP proxy instead.
+# See ENCLAVE.md for alternative approaches.
+#
+# For now, external API calls from the enclave will fail. Options:
+# 1. Run tinyproxy on parent and set HTTPS_PROXY in enclave
+# 2. Run a sidecar API service on parent that proxies requests
+# 3. Create separate vsock-proxy services for each external host
+
+[Service]
+Type=simple
+# DISABLED - see note above
+ExecStart=/bin/true
+# ExecStart=/usr/bin/vsock-proxy 443 mempool.space 443
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

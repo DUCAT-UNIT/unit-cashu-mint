@@ -1,0 +1,22 @@
+[Unit]
+Description=Ducat Cashu Mint Nitro Enclave
+After=network.target nitro-enclaves-allocator.service mint-postgres-proxy.service
+Requires=nitro-enclaves-allocator.service mint-postgres-proxy.service
+Wants=mint-external-proxy.service
+
+[Service]
+# oneshot: run-enclave returns immediately after launching
+# RemainAfterExit: service stays "active" after ExecStart completes
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/nitro-cli terminate-enclave --all
+ExecStart=/usr/bin/nitro-cli run-enclave --enclave-cid 16 --eif-path /opt/mint-enclave/mint-enclave.eif --memory 5500 --cpu-count 2
+ExecStop=/usr/bin/nitro-cli terminate-enclave --all
+StandardOutput=journal
+StandardError=journal
+
+# Give enclave time to fully boot before dependent services start
+ExecStartPost=/bin/sleep 15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=Mint Enclave KMS vsock proxy
+After=network.target nitro-enclaves-allocator.service
+Before=mint-enclave.service
+
+[Service]
+Type=simple
+# Proxy KMS API traffic from enclave to AWS KMS
+# kmstool-enclave-cli connects to vsock:8000 by default (--proxy-port)
+# Parent forwards to kms.us-east-1.amazonaws.com:443
+ExecStart=/usr/bin/vsock-proxy 8000 kms.us-east-1.amazonaws.com 443
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

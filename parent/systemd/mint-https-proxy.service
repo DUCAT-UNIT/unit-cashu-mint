@@ -1,0 +1,16 @@
+[Unit]
+Description=Mint Enclave HTTPS inbound proxy
+After=network.target mint-enclave.service
+Requires=mint-enclave.service
+
+[Service]
+Type=simple
+# Forward TCP:8443 to enclave vsock:8443 (where Nginx TLS terminates)
+ExecStart=/usr/bin/socat TCP-LISTEN:8443,fork,reuseaddr VSOCK-CONNECT:16:8443
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
