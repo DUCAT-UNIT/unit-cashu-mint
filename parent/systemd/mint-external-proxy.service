@@ -4,7 +4,7 @@ After=network.target
 
 # NOTE: This service is DISABLED because vsock-proxy requires a single destination host.
 # External API calls (Ord, Esplora, Mempool) require an HTTP proxy instead.
-# See ENCLAVE.md for alternative approaches.
+# See docs/enclave.md for alternative approaches.
 #
 # For now, external API calls from the enclave will fail. Options:
 # 1. Run tinyproxy on parent and set HTTPS_PROXY in enclave

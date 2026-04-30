@@ -19,6 +19,7 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+coverage-*.txt
 .vitest/
 
 # OS
@@ -31,19 +32,20 @@ Thumbs.db
 *.swp
 *.swo
 *~
+.claude/
 
 # Database
 *.sqlite
 *.db
 
-# Private keys (important!)
+# Private keys
 keys/
 *.pem
 *.key
-.claude/
+
+# Terraform
 terraform/.terraform/
+terraform/.terraform.lock.hcl.backup
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 terraform/terraform.tfvars
-*.pem
-.env
