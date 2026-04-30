@@ -66,12 +66,12 @@ export function initializeContainer(): DIContainer {
   // Backend Registry - supports multiple payment backends
   const backendRegistry = new BackendRegistry()
 
-  // Register Runes backend if 'sat' unit is enabled
-  if (env.SUPPORTED_UNITS_ARRAY.includes('sat')) {
+  // Register Runes backend if 'unit' is enabled
+  if (env.SUPPORTED_UNITS_ARRAY.includes('unit')) {
     const runesBackend = new RunesBackend(db)
     backendRegistry.register(runesBackend)
     container.register('runesBackend', runesBackend)
-    logger.info({ unit: 'sat' }, 'Registered Runes backend')
+    logger.info({ unit: 'unit' }, 'Registered Runes backend')
   }
 
   // Register BTC backend if 'btc' unit is enabled

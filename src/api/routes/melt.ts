@@ -6,7 +6,7 @@ import { Proof } from '../../types/cashu.js'
 interface MeltQuoteRequest {
   amount: number
   unit: string
-  rune_id?: string // Optional - required for 'sat' unit only
+  rune_id?: string // Optional - required for 'unit' (Runes) unit only
   request: string // destination address
 }
 
@@ -41,9 +41,9 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: `Unsupported unit: ${unit}` })
       }
 
-      // For 'sat' unit, rune_id is required
-      if (unit === 'sat' && !rune_id) {
-        return reply.code(400).send({ error: 'Rune ID required for sat unit' })
+      // For 'unit' (Runes), rune_id is required
+      if (unit === 'unit' && !rune_id) {
+        return reply.code(400).send({ error: 'Rune ID required for unit' })
       }
 
       if (!destination) {

@@ -26,7 +26,7 @@ export interface WithdrawalResult {
  * Implemented by BTCBackend and RunesBackend
  */
 export interface IPaymentBackend {
-  /** The unit this backend handles (e.g., 'btc', 'sat') */
+  /** The unit this backend handles (e.g., 'btc', 'unit') */
   readonly unit: string
 
   /**

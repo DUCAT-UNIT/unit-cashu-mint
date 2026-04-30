@@ -27,10 +27,10 @@ const envSchema = z.object({
   MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
   MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
   MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
-  SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (840000:3) - required if 'sat' unit enabled
+  SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 1527352:1) - required if 'unit' enabled
 
   // Multi-unit support
-  SUPPORTED_UNITS: z.string().default('sat'), // Comma-separated: 'btc', 'sat', or 'btc,sat'
+  SUPPORTED_UNITS: z.string().default('unit'), // Comma-separated: 'unit', 'btc', or 'unit,btc'
 
   // BTC Backend configuration (required if 'btc' in SUPPORTED_UNITS)
   MINT_BTC_ADDRESS: z.string().optional(), // P2WPKH address for BTC deposits
@@ -73,9 +73,9 @@ if (!parsed.success) {
 const supportedUnits = parsed.data.SUPPORTED_UNITS.split(',').map((u) => u.trim())
 
 // Validate unit-specific configuration
-if (supportedUnits.includes('sat') && !parsed.data.SUPPORTED_RUNES) {
-  console.error('❌ SUPPORTED_RUNES is required when "sat" unit is enabled')
-  throw new Error('SUPPORTED_RUNES required for sat unit')
+if (supportedUnits.includes('unit') && !parsed.data.SUPPORTED_RUNES) {
+  console.error('❌ SUPPORTED_RUNES is required when "unit" unit is enabled')
+  throw new Error('SUPPORTED_RUNES required for unit')
 }
 
 if (supportedUnits.includes('btc') && !parsed.data.MINT_BTC_ADDRESS) {

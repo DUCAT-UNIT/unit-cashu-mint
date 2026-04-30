@@ -20,7 +20,7 @@ import { IPaymentBackend, DepositStatus, WithdrawalResult } from '../core/paymen
  * Handles deposits, withdrawals, and UTXO management for the mint
  */
 export class RunesBackend implements IPaymentBackend {
-  readonly unit = 'sat'
+  readonly unit = 'unit'
 
   private ordClient: OrdClient
   private esploraClient: EsploraClient

@@ -1,6 +1,6 @@
 export interface Keyset {
   id: string // Keyset ID (14 chars hex)
-  unit: string // "sat" or "RUNE"
+  unit: string // "unit" (Runes) or "btc"
   rune_id: string // "840000:3" (DUCAT•UNIT•RUNE)
   active: boolean
   private_keys: Record<number, string> // amount -> hex privkey (encrypted)

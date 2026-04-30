@@ -1,8 +1,8 @@
 -- Migration 003: Add unit column to mint_utxos for multi-unit support
 -- This allows tracking UTXOs for both BTC and Runes
 
--- Add unit column with default 'sat' for backwards compatibility
-ALTER TABLE mint_utxos ADD COLUMN IF NOT EXISTS unit VARCHAR(20) NOT NULL DEFAULT 'sat';
+-- Add unit column with default 'unit' for Runes/UNIT token
+ALTER TABLE mint_utxos ADD COLUMN IF NOT EXISTS unit VARCHAR(20) NOT NULL DEFAULT 'unit';
 
 -- Update existing index to include unit
 DROP INDEX IF EXISTS idx_mint_utxos_rune;
