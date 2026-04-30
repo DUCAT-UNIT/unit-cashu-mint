@@ -81,6 +81,42 @@ jobs:
             package*.json \
             tsconfig.json
 
+      - name: Predict enclave PCR0 (reproducibility check)
+        run: |
+          # Build the EIF in CI to print its PCR0 alongside the commit SHA.
+          # This is a reproducibility signal: anyone with the same source
+          # commit + Dockerfile should produce the same PCR0.
+          # The actual deployment EIF is rebuilt on the EC2 host below;
+          # this step is purely informational.
+          set -e
+          if ! command -v docker >/dev/null; then
+            echo "docker not available on runner — skipping PCR0 prediction"
+            exit 0
+          fi
+          if [[ ! -f enclave/Dockerfile ]]; then
+            echo "no enclave/Dockerfile — skipping"
+            exit 0
+          fi
+          echo "::group::Build enclave image"
+          docker build -f enclave/Dockerfile -t mint-enclave:ci . || {
+            echo "image build failed (non-fatal for this step)"; exit 0; }
+          echo "::endgroup::"
+          # nitro-cli isn't on hosted runners; fall back to image SHA as a
+          # weaker (but still useful) fingerprint of the build inputs.
+          IMAGE_SHA=$(docker image inspect mint-enclave:ci --format '{{.Id}}')
+          echo "Commit:    ${{ github.sha }}"
+          echo "Image SHA: ${IMAGE_SHA}"
+          echo "Note: true PCR0 is computed by nitro-cli on the EC2 host."
+          echo "      See pcr0/${{ github.sha }}.txt in S3 after deploy."
+          {
+            echo "## Enclave build fingerprint"
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Image SHA: \`${IMAGE_SHA}\`"
+            echo ""
+            echo "True PCR0 is published to \`s3://${S3_BUCKET}/pcr0/${{ github.sha }}.txt\` after the EC2 build step."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -216,6 +252,15 @@ jobs:
           fi
 
           echo "Updating KMS policy with PCR0: $PCR0"
+
+          # Surface PCR0 in the GitHub Actions run summary so reviewers can
+          # tie a commit SHA to the deployed enclave fingerprint at a glance.
+          {
+            echo "## Deployed enclave PCR0"
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- PCR0:   \`${PCR0}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Get KMS key ID
           KMS_KEY_ID=$(aws kms list-aliases \
