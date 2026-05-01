@@ -11,6 +11,7 @@ import { CheckStateService } from '../core/services/CheckStateService.js'
 import { RunesBackend } from '../runes/RunesBackend.js'
 import { BTCBackend } from '../btc/BTCBackend.js'
 import { LNbitsBackend } from '../lightning/LNbitsBackend.js'
+import { FakeLightningBackend } from '../lightning/FakeLightningBackend.js'
 import { BackendRegistry } from '../core/payment/BackendRegistry.js'
 import { BackgroundTaskManager } from '../services/BackgroundTaskManager.js'
 import { env } from '../config/env.js'
@@ -93,7 +94,7 @@ export function initializeContainer(): DIContainer {
     logger.info({ unit: 'btc', aliases: ['sat'] }, 'Registered BTC backend')
   }
 
-  if (env.SUPPORTS_LIGHTNING) {
+  if (env.LIGHTNING_BACKEND === 'lnbits') {
     const lightningBackend = new LNbitsBackend({
       baseUrl: env.LNBITS_URL!,
       invoiceKey: env.LNBITS_INVOICE_KEY!,
@@ -103,6 +104,13 @@ export function initializeContainer(): DIContainer {
     backendRegistry.register(lightningBackend)
     container.register('lightningBackend', lightningBackend)
     logger.info({ method: 'bolt11', unit: 'sat' }, 'Registered Lightning backend')
+  }
+
+  if (env.LIGHTNING_BACKEND === 'fake') {
+    const lightningBackend = new FakeLightningBackend()
+    backendRegistry.register(lightningBackend)
+    container.register('lightningBackend', lightningBackend)
+    logger.warn({ method: 'bolt11', unit: 'sat' }, 'Registered fake Lightning backend')
   }
 
   container.register('backendRegistry', backendRegistry)

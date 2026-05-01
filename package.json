@@ -10,6 +10,10 @@
     "start": "node dist/server.js",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
+    "test:interop": "npm run interop:cashu-ts && npm run interop:cdk && npm run interop:nutshell",
+    "interop:cashu-ts": "tsx scripts/interop/cashu-ts-wallet-flow.ts",
+    "interop:cdk": "bash scripts/interop/cdk-wallet-flow.sh",
+    "interop:nutshell": "bash scripts/interop/nutshell-wallet-flow.sh",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "migrate": "tsx src/scripts/migrate.ts"

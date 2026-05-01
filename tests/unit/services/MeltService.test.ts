@@ -5,6 +5,7 @@ import { QuoteRepository } from '../../../src/database/repositories/QuoteReposit
 import { ProofRepository } from '../../../src/database/repositories/ProofRepository.js'
 import { BackendRegistry } from '../../../src/core/payment/BackendRegistry.js'
 import { IPaymentBackend } from '../../../src/core/payment/types.js'
+import { BlindedMessage, Proof } from '../../../src/types/cashu.js'
 
 vi.mock('../../../src/utils/logger.js', () => ({
   logger: {
@@ -83,5 +84,105 @@ describe('MeltService', () => {
         state: 'UNPAID',
       }),
     ])
+  })
+
+  it('returns NUT-08 bolt11 change for unused fee reserve blanks', async () => {
+    const quoteId = 'bolt11-quote'
+    const quoteRepo = {
+      findMeltQuoteByIdOrThrow: vi.fn().mockResolvedValue({
+        id: quoteId,
+        amount: 62,
+        unit: 'sat',
+        rune_id: 'btc:0',
+        method: 'bolt11',
+        request: 'lnbcrt620n1pn0r3ve',
+        fee_reserve: 2,
+        state: 'UNPAID',
+        expiry: Math.floor(Date.now() / 1000) + 3600,
+      }),
+      updateMeltQuoteState: vi.fn(),
+    } as unknown as QuoteRepository
+    const proofRepo = {
+      markSpent: vi.fn(),
+      deleteByTransactionId: vi.fn(),
+    } as unknown as ProofRepository
+    const mintCrypto = {
+      sumProofs: vi.fn().mockReturnValue(64),
+      verifyProofsOrThrow: vi.fn(),
+      hashSecret: vi.fn().mockReturnValue('02' + '11'.repeat(32)),
+      signBlindedMessages: vi.fn().mockResolvedValue([
+        { id: 'keyset123', amount: 2, C_: '02change' },
+      ]),
+    } as unknown as MintCrypto
+    const registry = new BackendRegistry()
+    const backend = createMockBackend('sat', 'bolt11')
+    vi.mocked(backend.withdraw).mockResolvedValue({
+      txid: '0'.repeat(64),
+      fee_paid: 0,
+    })
+    registry.register(backend)
+    const service = new MeltService(mintCrypto, quoteRepo, proofRepo, registry)
+    const inputs: Proof[] = [
+      { id: 'keyset123', amount: 64, secret: 'secret', C: '02proof' },
+    ]
+    const outputs: BlindedMessage[] = [
+      { id: 'keyset123', amount: 0, B_: '02blank1' },
+      { id: 'keyset123', amount: 0, B_: '02blank2' },
+    ]
+
+    const result = await service.meltTokens(quoteId, inputs, outputs)
+
+    expect(mintCrypto.signBlindedMessages).toHaveBeenCalledWith([
+      { id: 'keyset123', amount: 2, B_: '02blank1' },
+    ])
+    expect(result).toEqual(
+      expect.objectContaining({
+        quote: quoteId,
+        state: 'PAID',
+        payment_preimage: '0'.repeat(64),
+        change: [{ id: 'keyset123', amount: 2, C_: '02change' }],
+      })
+    )
+  })
+
+  it('rejects bolt11 melts when blanks cannot cover possible change', async () => {
+    const quoteId = 'bolt11-quote'
+    const quoteRepo = {
+      findMeltQuoteByIdOrThrow: vi.fn().mockResolvedValue({
+        id: quoteId,
+        amount: 10,
+        unit: 'sat',
+        rune_id: 'btc:0',
+        method: 'bolt11',
+        request: 'lnbcrt100n1pn0r3ve',
+        fee_reserve: 5,
+        state: 'UNPAID',
+        expiry: Math.floor(Date.now() / 1000) + 3600,
+      }),
+      updateMeltQuoteState: vi.fn(),
+    } as unknown as QuoteRepository
+    const proofRepo = {
+      markSpent: vi.fn(),
+      deleteByTransactionId: vi.fn(),
+    } as unknown as ProofRepository
+    const mintCrypto = {
+      sumProofs: vi.fn().mockReturnValue(25),
+      verifyProofsOrThrow: vi.fn(),
+      hashSecret: vi.fn(),
+      signBlindedMessages: vi.fn(),
+    } as unknown as MintCrypto
+    const registry = new BackendRegistry()
+    registry.register(createMockBackend('sat', 'bolt11'))
+    const service = new MeltService(mintCrypto, quoteRepo, proofRepo, registry)
+
+    await expect(
+      service.meltTokens(
+        quoteId,
+        [{ id: 'keyset123', amount: 25, secret: 'secret', C: '02proof' }],
+        [{ id: 'keyset123', amount: 0, B_: '02blank1' }]
+      )
+    ).rejects.toThrow('Insufficient blank outputs')
+
+    expect(proofRepo.markSpent).not.toHaveBeenCalled()
   })
 })

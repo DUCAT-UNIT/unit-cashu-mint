@@ -73,6 +73,7 @@ export interface MeltQuoteResponse {
   unit: string
   txid?: string
   payment_preimage?: string | null
+  change?: BlindSignature[]
 }
 
 export interface OnchainMeltQuoteResponse {

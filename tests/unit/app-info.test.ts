@@ -63,6 +63,7 @@ describe('buildMintInfo', () => {
   it('advertises bolt11 only when Lightning is enabled', () => {
     const info = buildMintInfo({ ...baseConfig, SUPPORTS_LIGHTNING: false })
 
+    expect(info.nuts['8']).toEqual({ supported: false })
     expect(info.nuts['23']).toEqual({ supported: false })
     expect(info.nuts['4'].methods).not.toContainEqual(
       expect.objectContaining({ method: 'bolt11' })
@@ -70,5 +71,12 @@ describe('buildMintInfo', () => {
     expect(info.nuts['5'].methods).not.toContainEqual(
       expect.objectContaining({ method: 'bolt11' })
     )
+  })
+
+  it('advertises NUT-08 for Lightning and does not claim DLEQ support yet', () => {
+    const info = buildMintInfo(baseConfig)
+
+    expect(info.nuts['8']).toEqual({ supported: true })
+    expect(info.nuts['12']).toEqual({ supported: false })
   })
 })

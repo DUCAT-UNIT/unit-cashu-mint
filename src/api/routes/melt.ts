@@ -13,6 +13,11 @@ interface MeltQuoteRequest {
 interface MeltTokensRequest {
   quote: string
   inputs: Proof[]
+  outputs?: Array<{
+    amount: number
+    id: string
+    B_: string
+  }>
 }
 
 export const meltRoutes: FastifyPluginAsync = async (fastify) => {
@@ -108,7 +113,7 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { method: string }; Body: MeltTokensRequest }>(
     '/v1/melt/:method',
     async (request, reply) => {
-      const { quote, inputs } = request.body
+      const { quote, inputs, outputs } = request.body
 
       if (!quote) {
         return reply.code(400).send({ error: 'Quote ID required' })
@@ -118,7 +123,7 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Invalid inputs' })
       }
 
-      const result = await meltService.meltTokens(quote, inputs)
+      const result = await meltService.meltTokens(quote, inputs, outputs ?? [])
       return reply.code(200).send(result)
     }
   )

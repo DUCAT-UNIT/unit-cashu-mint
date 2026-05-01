@@ -1,0 +1,95 @@
+name: Cashu Interop
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feature/multi-unit-btc-runes
+
+jobs:
+  wallet-interop:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mint_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      PORT: "3338"
+      HOST: 127.0.0.1
+      MINT_URL: http://127.0.0.1:3338
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/mint_dev
+      NETWORK: regtest
+      ESPLORA_URL: http://127.0.0.1:3002
+      ORD_URL: http://127.0.0.1:8080
+      MEMPOOL_URL: http://127.0.0.1:8999
+      MINT_SEED: "0000000000000000000000000000000000000000000000000000000000000001"
+      MINT_PUBKEY: "02c0ded65e7e9b7f8b3c0844bc5a9f20c59a01f4c2a2659362d0c40e8fcb8e35d"
+      SUPPORTED_UNITS: ""
+      LIGHTNING_BACKEND: fake
+      MIN_MINT_AMOUNT: "1"
+      MIN_MELT_AMOUNT: "1"
+      MAX_MINT_AMOUNT: "1000000"
+      MAX_MELT_AMOUNT: "1000000"
+      MINT_CONFIRMATIONS: "1"
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000002"
+      JWT_SECRET: interop-test-jwt-secret
+      CORS_ORIGINS: "*"
+      LOG_LEVEL: warn
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run migrate
+      - run: npm test -- --run tests/unit/app-info.test.ts tests/unit/services/MeltService.test.ts tests/unit/lightning/FakeLightningBackend.test.ts
+
+      - name: Start mint server
+        run: |
+          npm run start > /tmp/ducat-mint.log 2>&1 &
+          echo $! > /tmp/ducat-mint.pid
+          for i in {1..60}; do
+            if curl -fsS "$MINT_URL/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/ducat-mint.log
+          exit 1
+
+      - name: cashu-ts wallet flow
+        run: npm run interop:cashu-ts
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: CDK wallet flow
+        run: npm run interop:cdk
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Nutshell wallet flow
+        run: npm run interop:nutshell
+
+      - name: Print mint logs
+        if: always()
+        run: cat /tmp/ducat-mint.log || true

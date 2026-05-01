@@ -39,7 +39,7 @@ const envSchema = z
     BTC_FEE_RATE: z.string().default('5'), // sats/vbyte
 
     // Optional Lightning backend for standard Cashu bolt11 compatibility
-    LIGHTNING_BACKEND: z.enum(['disabled', 'lnbits']).default('disabled'),
+    LIGHTNING_BACKEND: z.enum(['disabled', 'lnbits', 'fake']).default('disabled'),
     LNBITS_URL: z.string().url().optional(),
     LNBITS_INVOICE_KEY: z.string().optional(),
     LNBITS_ADMIN_KEY: z.string().optional(),
@@ -87,6 +87,14 @@ const envSchema = z
         message: 'KMS_KEY_NAME is required when KEY_ENCRYPTION_MODE=gcp-kms',
       })
     }
+
+    if (value.LIGHTNING_BACKEND === 'fake' && value.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIGHTNING_BACKEND'],
+        message: 'LIGHTNING_BACKEND=fake is only allowed outside production',
+      })
+    }
   })
 
 const parsed = envSchema.safeParse(process.env)
@@ -121,7 +129,7 @@ if (supportsBitcoin && !parsed.data.MINT_BTC_ADDRESS) {
   throw new Error('MINT_BTC_ADDRESS required for bitcoin units')
 }
 
-if (supportsLightning) {
+if (parsed.data.LIGHTNING_BACKEND === 'lnbits') {
   if (!parsed.data.LNBITS_URL || !parsed.data.LNBITS_INVOICE_KEY || !parsed.data.LNBITS_ADMIN_KEY) {
     console.error(
       '❌ LNBITS_URL, LNBITS_INVOICE_KEY, and LNBITS_ADMIN_KEY are required when LIGHTNING_BACKEND=lnbits'

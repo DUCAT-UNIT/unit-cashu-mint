@@ -3,7 +3,7 @@ import { MintCrypto } from '../crypto/MintCrypto.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
 import { P2PKService } from './P2PKService.js'
-import { Proof, MeltQuoteResponse, OnchainMeltQuoteResponse } from '../../types/cashu.js'
+import { BlindedMessage, BlindSignature, Proof, MeltQuoteResponse, OnchainMeltQuoteResponse } from '../../types/cashu.js'
 import { AmountMismatchError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
@@ -188,9 +188,10 @@ export class MeltService {
    */
   async meltTokens(
     quoteId: string,
-    inputs: Proof[]
+    inputs: Proof[],
+    outputs: BlindedMessage[] = []
   ): Promise<
-    { state: string; paid: boolean; payment_preimage?: string } | MeltQuoteResponse | OnchainMeltQuoteResponse
+    { state: string; paid: boolean; payment_preimage?: string; change?: BlindSignature[] } | MeltQuoteResponse | OnchainMeltQuoteResponse
   > {
     logger.info({ quoteId, inputCount: inputs.length }, 'Melting tokens')
 
@@ -203,16 +204,20 @@ export class MeltService {
       throw new Error(`Quote ${quoteId} has expired`)
     }
 
-    // 3. Verify input amounts cover quote amount
-    // (No fee required - mint pays the BTC network fee)
+    // 3. Verify input amounts cover quote amount and advertised fee reserve.
     const inputAmount = this.mintCrypto.sumProofs(inputs)
-    const requiredAmount = quote.method === 'onchain'
+    const reservedAmount = quote.method === 'onchain'
       ? quote.amount + (quote.fee ?? 0)
       : quote.amount + quote.fee_reserve
 
-    if (inputAmount < requiredAmount) {
-      throw new AmountMismatchError(requiredAmount, inputAmount)
+    if (inputAmount < reservedAmount) {
+      throw new AmountMismatchError(reservedAmount, inputAmount)
     }
+
+    const maxChangeAmount = quote.method === 'bolt11'
+      ? inputAmount - quote.amount
+      : inputAmount - reservedAmount
+    this.validateChangeOutputs(outputs, maxChangeAmount)
 
     // 4. Verify all input proofs have valid signatures
     await this.mintCrypto.verifyProofsOrThrow(inputs)
@@ -257,6 +262,12 @@ export class MeltService {
 
       const nextState = quote.method === 'onchain' ? 'PENDING' : 'PAID'
       const outpoint = quote.method === 'onchain' ? `${result.txid}:0` : undefined
+      const spentAmount = quote.method === 'bolt11'
+        ? quote.amount + result.fee_paid
+        : reservedAmount
+      const changeAmount = inputAmount - spentAmount
+      const change = await this.signChangeOutputs(outputs, changeAmount)
+
       await this.quoteRepo.updateMeltQuoteState(
         quoteId,
         nextState,
@@ -294,6 +305,7 @@ export class MeltService {
           request: quote.request,
           unit: quote.unit,
           payment_preimage: result.txid,
+          change,
         }
       }
 
@@ -301,6 +313,7 @@ export class MeltService {
         state: 'PAID',
         paid: true, // NUT-05: paid field indicates successful payment
         payment_preimage: result.txid, // Transaction ID as payment proof
+        change,
       }
     } catch (error) {
       logger.error(
@@ -375,6 +388,68 @@ export class MeltService {
     }
 
     return sats
+  }
+
+  private validateChangeOutputs(outputs: BlindedMessage[], maxChangeAmount: number): void {
+    if (outputs.length === 0 || maxChangeAmount <= 0) {
+      return
+    }
+
+    const explicitAmount = outputs.reduce((sum, output) => sum + output.amount, 0)
+    if (explicitAmount > maxChangeAmount) {
+      throw new AmountMismatchError(maxChangeAmount, explicitAmount)
+    }
+
+    if (explicitAmount === 0 && this.splitAmount(maxChangeAmount).length > outputs.length) {
+      throw new Error('Insufficient blank outputs for melt change')
+    }
+  }
+
+  private async signChangeOutputs(
+    outputs: BlindedMessage[],
+    changeAmount: number
+  ): Promise<BlindSignature[]> {
+    if (outputs.length === 0 || changeAmount <= 0) {
+      return []
+    }
+
+    const explicitAmount = outputs.reduce((sum, output) => sum + output.amount, 0)
+    if (explicitAmount > 0) {
+      if (explicitAmount !== changeAmount) {
+        throw new AmountMismatchError(changeAmount, explicitAmount)
+      }
+
+      return this.mintCrypto.signBlindedMessages(outputs.filter((output) => output.amount > 0))
+    }
+
+    const denominations = this.splitAmount(changeAmount)
+    if (denominations.length > outputs.length) {
+      throw new Error('Insufficient blank outputs for melt change')
+    }
+
+    const changeOutputs = denominations.map((amount, index) => ({
+      ...outputs[index],
+      amount,
+    }))
+
+    return this.mintCrypto.signBlindedMessages(changeOutputs)
+  }
+
+  private splitAmount(amount: number): number[] {
+    const denominations: number[] = []
+    let remaining = amount
+    let bit = 1
+
+    while (remaining > 0) {
+      if (remaining % 2 === 1) {
+        denominations.push(bit)
+      }
+
+      remaining = Math.floor(remaining / 2)
+      bit *= 2
+    }
+
+    return denominations.reverse()
   }
 
   private defaultRuneIdForUnit(unit: string, runeId?: string): string {
