@@ -6,10 +6,20 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.45"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.45"
+    }
   }
 }
 
 provider "google" {
+  project = var.project_id
+  region  = var.region
+  zone    = var.zone
+}
+
+provider "google-beta" {
   project = var.project_id
   region  = var.region
   zone    = var.zone
@@ -189,6 +199,12 @@ data "google_secret_manager_secret" "mint_env" {
   secret_id = var.mint_env_secret_id
 }
 
+resource "google_project_service_identity" "secret_manager" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "secretmanager.googleapis.com"
+}
+
 resource "google_secret_manager_secret_iam_member" "mint_env_accessor" {
   secret_id = data.google_secret_manager_secret.mint_env.id
   role      = "roles/secretmanager.secretAccessor"
@@ -204,7 +220,7 @@ resource "google_kms_crypto_key_iam_member" "mint_decrypter" {
 resource "google_kms_crypto_key_iam_member" "secret_manager_cmek" {
   crypto_key_id = google_kms_crypto_key.secret_manager.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-secretmanager.iam.gserviceaccount.com"
+  member        = google_project_service_identity.secret_manager.member
 }
 
 resource "google_kms_crypto_key_iam_member" "compute_engine_encrypter_decrypter" {
@@ -216,6 +232,12 @@ resource "google_kms_crypto_key_iam_member" "compute_engine_encrypter_decrypter"
 resource "google_project_iam_member" "confidential_workload_user" {
   project = var.project_id
   role    = "roles/confidentialcomputing.workloadUser"
+  member  = "serviceAccount:${google_service_account.mint.email}"
+}
+
+resource "google_project_iam_member" "compute_viewer" {
+  project = var.project_id
+  role    = "roles/compute.viewer"
   member  = "serviceAccount:${google_service_account.mint.email}"
 }
 
