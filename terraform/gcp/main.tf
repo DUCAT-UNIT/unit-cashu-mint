@@ -15,6 +15,10 @@ provider "google" {
   zone    = var.zone
 }
 
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
 variable "project_id" {
   description = "GCP project ID."
   type        = string
@@ -178,6 +182,12 @@ resource "google_kms_crypto_key_iam_member" "mint_decrypter" {
   crypto_key_id = google_kms_crypto_key.mint.id
   role          = "roles/cloudkms.cryptoKeyDecrypter"
   member        = "serviceAccount:${google_service_account.mint.email}"
+}
+
+resource "google_kms_crypto_key_iam_member" "compute_engine_encrypter_decrypter" {
+  crypto_key_id = google_kms_crypto_key.mint.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${data.google_project.current.number}@compute-system.iam.gserviceaccount.com"
 }
 
 data "google_compute_image" "ubuntu" {
