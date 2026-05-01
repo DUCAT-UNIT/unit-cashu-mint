@@ -99,6 +99,12 @@ variable "admin_cidr_blocks" {
   default     = []
 }
 
+variable "require_confidential_vm_attestation" {
+  description = "Fail startup before fetching secrets unless Compute Engine reports Confidential VM and Shielded VM are enabled."
+  type        = bool
+  default     = true
+}
+
 locals {
   name_prefix = "ducat-mint-${var.environment}"
   labels = {
@@ -168,6 +174,17 @@ resource "google_kms_crypto_key" "mint" {
   rotation_period = "2592000s"
 }
 
+resource "google_kms_key_ring" "secret_manager" {
+  name     = "${local.name_prefix}-secret-manager-keyring"
+  location = "global"
+}
+
+resource "google_kms_crypto_key" "secret_manager" {
+  name            = "${local.name_prefix}-secret-manager"
+  key_ring        = google_kms_key_ring.secret_manager.id
+  rotation_period = "2592000s"
+}
+
 data "google_secret_manager_secret" "mint_env" {
   secret_id = var.mint_env_secret_id
 }
@@ -180,14 +197,26 @@ resource "google_secret_manager_secret_iam_member" "mint_env_accessor" {
 
 resource "google_kms_crypto_key_iam_member" "mint_decrypter" {
   crypto_key_id = google_kms_crypto_key.mint.id
-  role          = "roles/cloudkms.cryptoKeyDecrypter"
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${google_service_account.mint.email}"
+}
+
+resource "google_kms_crypto_key_iam_member" "secret_manager_cmek" {
+  crypto_key_id = google_kms_crypto_key.secret_manager.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-secretmanager.iam.gserviceaccount.com"
 }
 
 resource "google_kms_crypto_key_iam_member" "compute_engine_encrypter_decrypter" {
   crypto_key_id = google_kms_crypto_key.mint.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:service-${data.google_project.current.number}@compute-system.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "confidential_workload_user" {
+  project = var.project_id
+  role    = "roles/confidentialcomputing.workloadUser"
+  member  = "serviceAccount:${google_service_account.mint.email}"
 }
 
 data "google_compute_image" "ubuntu" {
@@ -239,13 +268,16 @@ resource "google_compute_instance" "mint" {
   }
 
   metadata_startup_script = templatefile("${path.module}/startup.sh", {
-    project_id         = var.project_id
-    repo_url           = var.repo_url
-    repo_ref           = var.repo_ref
-    domain_name        = var.domain_name
-    tls_email          = var.tls_email
-    mint_env_secret_id = var.mint_env_secret_id
-    db_password        = var.db_password
+    project_id                          = var.project_id
+    repo_url                            = var.repo_url
+    repo_ref                            = var.repo_ref
+    domain_name                         = var.domain_name
+    tls_email                           = var.tls_email
+    mint_env_secret_id                  = var.mint_env_secret_id
+    db_password                         = var.db_password
+    app_kms_key_name                    = google_kms_crypto_key.mint.id
+    require_confidential_vm_attestation = var.require_confidential_vm_attestation
+    confidential_instance_type          = var.confidential_instance_type
   })
 }
 
@@ -272,4 +304,14 @@ output "service_account_email" {
 output "mint_env_secret_name" {
   description = "Secret Manager secret that must contain mint env vars."
   value       = data.google_secret_manager_secret.mint_env.id
+}
+
+output "app_kms_key_name" {
+  description = "Cloud KMS key used by the mint app for keyset private-key encryption."
+  value       = google_kms_crypto_key.mint.id
+}
+
+output "secret_manager_cmek_key_name" {
+  description = "Cloud KMS key to use as the Secret Manager CMEK for the mint env secret."
+  value       = google_kms_crypto_key.secret_manager.id
 }

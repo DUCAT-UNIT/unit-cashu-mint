@@ -1,4 +1,4 @@
-import { randomBytes, createCipheriv, createDecipheriv, createHash } from 'crypto'
+import { createHash } from 'crypto'
 import { deriveKeysetId } from '@cashu/cashu-ts'
 import { KeysetRepository } from '../../database/repositories/KeysetRepository.js'
 import { Keyset } from '../models/Keyset.js'
@@ -7,6 +7,7 @@ import { KeysetNotFoundError, KeysetInactiveError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { getPublicKey } from '@noble/secp256k1'
+import { KeyEncryptor } from './KeyEncryptor.js'
 
 // Standard Cashu denominations (powers of 2)
 const DENOMINATIONS = [
@@ -16,11 +17,10 @@ const DENOMINATIONS = [
 
 export class KeyManager {
   private keysetCache = new Map<string, Keyset>()
-  private decryptionKey: Buffer
+  private keyEncryptor: KeyEncryptor
 
   constructor(private keysetRepo: KeysetRepository) {
-    // Derive AES key from env
-    this.decryptionKey = Buffer.from(env.ENCRYPTION_KEY, 'hex')
+    this.keyEncryptor = new KeyEncryptor()
   }
 
   /**
@@ -60,7 +60,7 @@ export class KeyManager {
     const id = fullId.substring(0, 14)
 
     // Encrypt private keys before storing
-    const encryptedPrivateKeys = this.encryptKeys(private_keys)
+    const encryptedPrivateKeys = await this.encryptKeys(private_keys, id)
 
     const keyset: Keyset = {
       id,
@@ -99,7 +99,7 @@ export class KeyManager {
         const dbKeyset = await this.keysetRepo.findByIdOrThrow(keysetId)
 
         // Decrypt private keys and cache
-        const decryptedPrivateKeys = this.decryptKeys(dbKeyset.private_keys)
+        const decryptedPrivateKeys = await this.decryptKeys(dbKeyset.private_keys, dbKeyset.id)
         keyset = {
           ...dbKeyset,
           private_keys: decryptedPrivateKeys,
@@ -135,7 +135,7 @@ export class KeyManager {
       keyset = await this.keysetRepo.findByIdOrThrow(keysetId)
 
       // Decrypt private keys and cache
-      const decryptedPrivateKeys = this.decryptKeys(keyset.private_keys)
+      const decryptedPrivateKeys = await this.decryptKeys(keyset.private_keys, keyset.id)
       this.keysetCache.set(keysetId, {
         ...keyset,
         private_keys: decryptedPrivateKeys,
@@ -158,7 +158,7 @@ export class KeyManager {
     // Decrypt and cache all active keysets
     for (const keyset of keysets) {
       if (!this.keysetCache.has(keyset.id)) {
-        const decryptedPrivateKeys = this.decryptKeys(keyset.private_keys)
+        const decryptedPrivateKeys = await this.decryptKeys(keyset.private_keys, keyset.id)
         this.keysetCache.set(keyset.id, {
           ...keyset,
           private_keys: decryptedPrivateKeys,
@@ -178,7 +178,7 @@ export class KeyManager {
     // Decrypt and cache
     for (const keyset of keysets) {
       if (!this.keysetCache.has(keyset.id)) {
-        const decryptedPrivateKeys = this.decryptKeys(keyset.private_keys)
+        const decryptedPrivateKeys = await this.decryptKeys(keyset.private_keys, keyset.id)
         this.keysetCache.set(keyset.id, {
           ...keyset,
           private_keys: decryptedPrivateKeys,
@@ -201,7 +201,7 @@ export class KeyManager {
 
     // Decrypt and cache if not already cached
     if (!this.keysetCache.has(keyset.id)) {
-      const decryptedPrivateKeys = this.decryptKeys(keyset.private_keys)
+      const decryptedPrivateKeys = await this.decryptKeys(keyset.private_keys, keyset.id)
       this.keysetCache.set(keyset.id, {
         ...keyset,
         private_keys: decryptedPrivateKeys,
@@ -223,15 +223,17 @@ export class KeyManager {
   /**
    * Encrypt private keys for storage
    */
-  private encryptKeys(keys: Record<number, string>): Record<number, string> {
+  private async encryptKeys(
+    keys: Record<number, string>,
+    keysetId: string
+  ): Promise<Record<number, string>> {
     const encrypted: Record<number, string> = {}
-    const iv = randomBytes(16)
 
     for (const [amount, key] of Object.entries(keys)) {
-      const cipher = createCipheriv('aes-256-cbc', this.decryptionKey, iv)
-      let encryptedKey = cipher.update(key, 'utf8', 'hex')
-      encryptedKey += cipher.final('hex')
-      encrypted[parseInt(amount)] = `${iv.toString('hex')}:${encryptedKey}`
+      encrypted[parseInt(amount)] = await this.keyEncryptor.encrypt(
+        key,
+        this.keyEncryptionContext(keysetId, amount)
+      )
     }
 
     return encrypted
@@ -240,19 +242,24 @@ export class KeyManager {
   /**
    * Decrypt private keys from storage
    */
-  private decryptKeys(encryptedKeys: Record<number, string>): Record<number, string> {
+  private async decryptKeys(
+    encryptedKeys: Record<number, string>,
+    keysetId: string
+  ): Promise<Record<number, string>> {
     const decrypted: Record<number, string> = {}
 
     for (const [amount, encryptedKey] of Object.entries(encryptedKeys)) {
-      const [ivHex, keyHex] = encryptedKey.split(':')
-      const iv = Buffer.from(ivHex, 'hex')
-      const decipher = createDecipheriv('aes-256-cbc', this.decryptionKey, iv)
-      let decryptedKey = decipher.update(keyHex, 'hex', 'utf8')
-      decryptedKey += decipher.final('utf8')
-      decrypted[parseInt(amount)] = decryptedKey
+      decrypted[parseInt(amount)] = await this.keyEncryptor.decrypt(
+        encryptedKey,
+        this.keyEncryptionContext(keysetId, amount)
+      )
     }
 
     return decrypted
+  }
+
+  private keyEncryptionContext(keysetId: string, amount: string): string {
+    return `ducat-mint:keyset:${keysetId}:amount:${amount}`
   }
 
   /**
@@ -260,7 +267,7 @@ export class KeyManager {
    */
   async loadKeyset(keysetId: string): Promise<void> {
     const keyset = await this.keysetRepo.findByIdOrThrow(keysetId)
-    const decryptedPrivateKeys = this.decryptKeys(keyset.private_keys)
+    const decryptedPrivateKeys = await this.decryptKeys(keyset.private_keys, keyset.id)
     this.keysetCache.set(keysetId, {
       ...keyset,
       private_keys: decryptedPrivateKeys,

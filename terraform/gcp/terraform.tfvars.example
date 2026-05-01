@@ -19,6 +19,10 @@ boot_disk_size_gb          = 50
 
 mint_env_secret_id = "ducat-mint-env"
 
+# Fails boot before fetching Secret Manager payload if this is not a
+# Confidential VM with Shielded VM controls enabled.
+require_confidential_vm_attestation = true
+
 # Generate with: openssl rand -base64 24
 db_password = "CHANGE_THIS_TO_A_SECURE_PASSWORD"
 

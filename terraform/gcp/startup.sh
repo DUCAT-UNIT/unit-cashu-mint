@@ -8,6 +8,9 @@ DOMAIN_NAME="${domain_name}"
 TLS_EMAIL="${tls_email}"
 MINT_ENV_SECRET_ID="${mint_env_secret_id}"
 DB_PASSWORD="${db_password}"
+APP_KMS_KEY_NAME="${app_kms_key_name}"
+REQUIRE_CONFIDENTIAL_VM_ATTESTATION="${require_confidential_vm_attestation}"
+CONFIDENTIAL_INSTANCE_TYPE="${confidential_instance_type}"
 APP_DIR="/opt/ducat-mint"
 ENV_DIR="/etc/ducat-mint"
 ENV_FILE="$ENV_DIR/mint.env"
@@ -53,6 +56,59 @@ metadata_token() {
   curl -fsS -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'
+}
+
+assert_confidential_vm() {
+  if [ "$REQUIRE_CONFIDENTIAL_VM_ATTESTATION" != "true" ]; then
+    return
+  fi
+
+  local token
+  token="$(metadata_token)"
+  PROJECT_ID="$PROJECT_ID" SECRET_TOKEN="$token" EXPECTED_CONFIDENTIAL_INSTANCE_TYPE="$CONFIDENTIAL_INSTANCE_TYPE" python3 - <<'PY'
+import json
+import os
+import urllib.request
+
+token = os.environ["SECRET_TOKEN"]
+project = os.environ["PROJECT_ID"]
+expected_type = os.environ["EXPECTED_CONFIDENTIAL_INSTANCE_TYPE"]
+
+def metadata(path: str) -> str:
+    request = urllib.request.Request(
+        f"http://metadata.google.internal/computeMetadata/v1/{path}",
+        headers={"Metadata-Flavor": "Google"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return response.read().decode("utf-8")
+
+zone = metadata("instance/zone").rsplit("/", 1)[-1]
+name = metadata("instance/name")
+url = f"https://compute.googleapis.com/compute/v1/projects/{project}/zones/{zone}/instances/{name}"
+request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+with urllib.request.urlopen(request, timeout=30) as response:
+    instance = json.load(response)
+
+confidential = instance.get("confidentialInstanceConfig") or {}
+shielded = instance.get("shieldedInstanceConfig") or {}
+actual_type = confidential.get("confidentialInstanceType", "")
+checks = {
+    "confidential_compute": confidential.get("enableConfidentialCompute") is True,
+    "confidential_type": not expected_type or actual_type == expected_type,
+    "secure_boot": shielded.get("enableSecureBoot") is True,
+    "vtpm": shielded.get("enableVtpm") is True,
+    "integrity_monitoring": shielded.get("enableIntegrityMonitoring") is True,
+}
+failed = [name for name, ok in checks.items() if not ok]
+if failed:
+    raise SystemExit(f"Confidential VM attestation gate failed: {failed}")
+
+print(
+    "Confidential VM attestation gate passed "
+    f"(type={actual_type}, secure_boot={shielded.get('enableSecureBoot')}, "
+    f"vtpm={shielded.get('enableVtpm')}, integrity={shielded.get('enableIntegrityMonitoring')})"
+)
+PY
 }
 
 fetch_secret() {
@@ -120,6 +176,8 @@ NODE_ENV=production
 HOST=127.0.0.1
 PORT=3338
 DATABASE_URL=postgresql://mintuser:$${DB_PASSWORD}@127.0.0.1:5432/mintdb
+KEY_ENCRYPTION_MODE=gcp-kms
+KMS_KEY_NAME=$APP_KMS_KEY_NAME
 EOF
   chmod 0600 "$ENV_FILE"
 
@@ -169,6 +227,7 @@ EOF
 
 install_node
 install_caddy
+assert_confidential_vm
 setup_postgres
 deploy_app
 configure_proxy

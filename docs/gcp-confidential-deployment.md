@@ -7,16 +7,22 @@ security model is different:
 - AWS Nitro Enclaves isolate the mint from the parent EC2 instance.
 - GCP Confidential VM encrypts the whole VM memory from the cloud operator and
   host, but the guest OS remains inside the trust boundary.
-- For stricter per-workload attestation on GCP, use Confidential Space as the
-  next step. That is the closer match for attestation-gated secret release.
+- This deployment has a startup attestation gate: it refuses to fetch Secret
+  Manager payloads unless Compute Engine reports Confidential VM and Shielded VM
+  controls enabled for the instance.
+- True Nitro-style KMS release on GCP requires Confidential Space, a container
+  image digest, and Workload Identity Federation IAM bindings. That is the
+  closer match for attestation-gated secret release because KMS access is granted
+  to attested workload claims instead of the VM service account.
 
 ## What Terraform Creates
 
 - VPC, subnet, firewall, and static IP
 - Confidential VM with Shielded VM enabled
 - Runtime service account
-- Cloud KMS key for encrypted boot disk and future secret flows
-- IAM wiring for an existing Secret Manager secret with mint environment variables
+- Cloud KMS key for encrypted boot disk and application keyset encryption
+- Cloud KMS key for Secret Manager CMEK
+- IAM wiring for the Secret Manager secret and KMS keys
 - Startup automation that installs Postgres, Node.js 22, Caddy, the mint app,
   migrations, and a systemd service
 
@@ -27,12 +33,20 @@ cd terraform/gcp
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform.tfvars`, then create the secret payload before first boot:
+Edit `terraform.tfvars`, then create the secret payload before first boot.
+Use a CMEK-protected secret in production:
 
 ```bash
-gcloud secrets create ducat-mint-env --replication-policy=automatic
+gcloud secrets create ducat-mint-env \
+  --replication-policy=automatic \
+  --kms-key-name="$(terraform output -raw secret_manager_cmek_key_name)"
 gcloud secrets versions add ducat-mint-env --data-file=/path/to/mint.env
 ```
+
+For an existing secret, update the CMEK configuration and add a new version
+after Terraform creates `secret_manager_cmek_key_name`. Existing versions are
+not re-encrypted by Secret Manager; only versions added after the CMEK update
+use the new key.
 
 The `mint.env` file must contain the sensitive and chain-specific values:
 
@@ -60,6 +74,19 @@ MINT_CONFIRMATIONS=1
 MELT_CONFIRMATIONS=1
 CORS_ORIGINS=https://cashu.me
 ```
+
+On GCP, startup appends the runtime encryption settings below after reading the
+secret, so Cloud KMS is authoritative even if the secret still contains
+`KEY_ENCRYPTION_MODE=local` for local development:
+
+```dotenv
+KEY_ENCRYPTION_MODE=gcp-kms
+KMS_KEY_NAME=projects/.../locations/.../keyRings/.../cryptoKeys/...
+```
+
+`ENCRYPTION_KEY` should remain available during migration because the app can
+still read legacy local AES-CBC keyset rows, but newly written keyset private
+keys are encrypted with Cloud KMS when `KEY_ENCRYPTION_MODE=gcp-kms`.
 
 Then apply:
 
@@ -117,8 +144,12 @@ sudo systemctl restart ducat-mint
 ## Security Notes
 
 - Keep `mint.env` out of git. It contains the mint seed.
-- The Terraform service account can read the mint Secret Manager secret. This
-  is operationally useful, but it is not equivalent to Nitro PCR-gated KMS.
-- For a production launch that needs enclave-style public attestation on GCP,
-  move the signing workload into Confidential Space and release secrets based
-  on attestation claims.
+- Secret Manager CMEK protects new secret versions at rest with the Terraform
+  `secret_manager_cmek_key_name` key.
+- Keyset private keys stored in Postgres are encrypted by the app with
+  `app_kms_key_name` when running on GCP.
+- The startup attestation gate blocks accidental non-Confidential-VM boots
+  before secrets are fetched, but root inside the guest remains trusted.
+- For production-grade Nitro-style KMS attestation gating on GCP, move the
+  signing workload into Confidential Space and grant KMS decrypt to the
+  attested workload identity, usually bound to the container image digest.

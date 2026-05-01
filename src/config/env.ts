@@ -3,70 +3,91 @@ import { z } from 'zod'
 
 config()
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().default('3000'),
-  HOST: z.string().default('0.0.0.0'),
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    PORT: z.string().default('3000'),
+    HOST: z.string().default('0.0.0.0'),
 
-  // Enclave mode flag - enables enclave-specific behavior
-  ENCLAVE_MODE: z
-    .string()
-    .transform((v) => v === 'true')
-    .default('false'),
+    // Enclave mode flag - enables enclave-specific behavior
+    ENCLAVE_MODE: z
+      .string()
+      .transform((v) => v === 'true')
+      .default('false'),
 
-  DATABASE_URL: z.string(),
-  REDIS_URL: z.string().optional(),
+    DATABASE_URL: z.string(),
+    REDIS_URL: z.string().optional(),
 
-  NETWORK: z.enum(['mainnet', 'testnet', 'signet', 'regtest', 'mutinynet']).default('testnet'),
-  ESPLORA_URL: z.string(),
-  ORD_URL: z.string(),
-  MEMPOOL_URL: z.string(),
+    NETWORK: z.enum(['mainnet', 'testnet', 'signet', 'regtest', 'mutinynet']).default('testnet'),
+    ESPLORA_URL: z.string(),
+    ORD_URL: z.string(),
+    MEMPOOL_URL: z.string(),
 
-  MINT_SEED: z.string().length(64), // 32 bytes hex
-  MINT_PUBKEY: z.string(),
-  MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
-  MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
-  MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
-  SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 1527352:1) - required if 'unit' enabled
+    MINT_SEED: z.string().length(64), // 32 bytes hex
+    MINT_PUBKEY: z.string(),
+    MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
+    MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
+    MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
+    SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 1527352:1) - required if 'unit' enabled
 
-  // Multi-unit support
-  SUPPORTED_UNITS: z.string().default('unit'), // Comma-separated: 'unit', 'btc', or 'unit,btc'
+    // Multi-unit support
+    SUPPORTED_UNITS: z.string().default('unit'), // Comma-separated: 'unit', 'btc', or 'unit,btc'
 
-  // BTC Backend configuration (required if 'btc' or 'sat' in SUPPORTED_UNITS)
-  MINT_BTC_ADDRESS: z.string().optional(), // P2WPKH address for BTC deposits
-  MINT_BTC_PUBKEY: z.string().optional(), // Public key for BTC signing
-  BTC_FEE_RATE: z.string().default('5'), // sats/vbyte
+    // BTC Backend configuration (required if 'btc' or 'sat' in SUPPORTED_UNITS)
+    MINT_BTC_ADDRESS: z.string().optional(), // P2WPKH address for BTC deposits
+    MINT_BTC_PUBKEY: z.string().optional(), // Public key for BTC signing
+    BTC_FEE_RATE: z.string().default('5'), // sats/vbyte
 
-  // Optional Lightning backend for standard Cashu bolt11 compatibility
-  LIGHTNING_BACKEND: z.enum(['disabled', 'lnbits']).default('disabled'),
-  LNBITS_URL: z.string().url().optional(),
-  LNBITS_INVOICE_KEY: z.string().optional(),
-  LNBITS_ADMIN_KEY: z.string().optional(),
-  LIGHTNING_FEE_RESERVE: z.string().default('2'), // sats
+    // Optional Lightning backend for standard Cashu bolt11 compatibility
+    LIGHTNING_BACKEND: z.enum(['disabled', 'lnbits']).default('disabled'),
+    LNBITS_URL: z.string().url().optional(),
+    LNBITS_INVOICE_KEY: z.string().optional(),
+    LNBITS_ADMIN_KEY: z.string().optional(),
+    LIGHTNING_FEE_RESERVE: z.string().default('2'), // sats
 
-  ENCRYPTION_KEY: z.string().length(64),
-  JWT_SECRET: z.string(),
+    KEY_ENCRYPTION_MODE: z.enum(['local', 'gcp-kms']).default('local'),
+    KMS_KEY_NAME: z.string().optional(),
+    GOOGLE_OAUTH_ACCESS_TOKEN: z.string().optional(),
+    ENCRYPTION_KEY: z.string().length(64).optional(),
+    JWT_SECRET: z.string(),
 
-  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 
-  RATE_LIMIT_MAX: z.string().default('100'),
-  RATE_LIMIT_WINDOW: z.string().default('60000'),
+    RATE_LIMIT_MAX: z.string().default('100'),
+    RATE_LIMIT_WINDOW: z.string().default('60000'),
 
-  MINT_NAME: z.string().default('Ducat UNIT Mint'),
-  MINT_DESCRIPTION: z.string().default('Cashu ecash backed by UNIT'),
-  MINT_CONTACT_EMAIL: z.string().email().optional(),
-  MINT_CONTACT_NOSTR: z.string().optional(),
+    MINT_NAME: z.string().default('Ducat UNIT Mint'),
+    MINT_DESCRIPTION: z.string().default('Cashu ecash backed by UNIT'),
+    MINT_CONTACT_EMAIL: z.string().email().optional(),
+    MINT_CONTACT_NOSTR: z.string().optional(),
 
-  CORS_ORIGINS: z.string().optional(), // Comma-separated list of allowed origins
+    CORS_ORIGINS: z.string().optional(), // Comma-separated list of allowed origins
 
-  MIN_MINT_AMOUNT: z.string().default('100'),
-  MAX_MINT_AMOUNT: z.string().default('100000000'),
-  MIN_MELT_AMOUNT: z.string().default('100'),
-  MAX_MELT_AMOUNT: z.string().default('100000000'),
+    MIN_MINT_AMOUNT: z.string().default('100'),
+    MAX_MINT_AMOUNT: z.string().default('100000000'),
+    MIN_MELT_AMOUNT: z.string().default('100'),
+    MAX_MELT_AMOUNT: z.string().default('100000000'),
 
-  MINT_CONFIRMATIONS: z.string().default('1'),
-  MELT_CONFIRMATIONS: z.string().default('1'),
-})
+    MINT_CONFIRMATIONS: z.string().default('1'),
+    MELT_CONFIRMATIONS: z.string().default('1'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.KEY_ENCRYPTION_MODE === 'local' && !value.ENCRYPTION_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ENCRYPTION_KEY'],
+        message: 'ENCRYPTION_KEY is required when KEY_ENCRYPTION_MODE=local',
+      })
+    }
+
+    if (value.KEY_ENCRYPTION_MODE === 'gcp-kms' && !value.KMS_KEY_NAME) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['KMS_KEY_NAME'],
+        message: 'KMS_KEY_NAME is required when KEY_ENCRYPTION_MODE=gcp-kms',
+      })
+    }
+  })
 
 const parsed = envSchema.safeParse(process.env)
 
@@ -84,9 +105,10 @@ const configuredSupportedUnits = parsed.data.SUPPORTED_UNITS.split(',')
 const supportsLightning = parsed.data.LIGHTNING_BACKEND !== 'disabled'
 const supportsBitcoin =
   configuredSupportedUnits.includes('btc') || configuredSupportedUnits.includes('sat')
-const supportedUnits = supportsBitcoin || supportsLightning
-  ? Array.from(new Set([...configuredSupportedUnits, 'sat']))
-  : configuredSupportedUnits
+const supportedUnits =
+  supportsBitcoin || supportsLightning
+    ? Array.from(new Set([...configuredSupportedUnits, 'sat']))
+    : configuredSupportedUnits
 
 // Validate unit-specific configuration
 if (supportedUnits.includes('unit') && !parsed.data.SUPPORTED_RUNES) {
@@ -101,7 +123,9 @@ if (supportsBitcoin && !parsed.data.MINT_BTC_ADDRESS) {
 
 if (supportsLightning) {
   if (!parsed.data.LNBITS_URL || !parsed.data.LNBITS_INVOICE_KEY || !parsed.data.LNBITS_ADMIN_KEY) {
-    console.error('❌ LNBITS_URL, LNBITS_INVOICE_KEY, and LNBITS_ADMIN_KEY are required when LIGHTNING_BACKEND=lnbits')
+    console.error(
+      '❌ LNBITS_URL, LNBITS_INVOICE_KEY, and LNBITS_ADMIN_KEY are required when LIGHTNING_BACKEND=lnbits'
+    )
     throw new Error('LNbits configuration required for lightning')
   }
 }
