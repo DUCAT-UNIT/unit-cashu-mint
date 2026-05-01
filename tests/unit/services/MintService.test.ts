@@ -5,6 +5,8 @@ import { KeyManager } from '../../../src/core/crypto/KeyManager.js'
 import { QuoteRepository } from '../../../src/database/repositories/QuoteRepository.js'
 import { BackendRegistry } from '../../../src/core/payment/BackendRegistry.js'
 import { IPaymentBackend } from '../../../src/core/payment/types.js'
+import { MintQuote } from '../../../src/core/models/Quote.js'
+import { MintQuoteResponse } from '../../../src/types/cashu.js'
 import { AmountMismatchError } from '../../../src/utils/errors.js'
 
 // Mock dependencies
@@ -22,12 +24,14 @@ vi.mock('../../../src/config/env.js', () => ({
     MIN_MINT_AMOUNT: 1,
     MAX_MINT_AMOUNT: 100000000,
     MINT_CONFIRMATIONS: 1,
+    SUPPORTED_RUNES_ARRAY: ['1527352:1'],
   },
 }))
 
 // Mock backend for testing
-function createMockBackend(unit: string): IPaymentBackend {
+function createMockBackend(unit: string, method?: string): IPaymentBackend {
   return {
+    method,
     unit,
     createDepositAddress: vi.fn().mockResolvedValue('tb1ptest123'),
     checkDeposit: vi.fn(),
@@ -35,6 +39,23 @@ function createMockBackend(unit: string): IPaymentBackend {
     estimateFee: vi.fn(),
     withdraw: vi.fn(),
     getBalance: vi.fn(),
+  }
+}
+
+function createMintQuote(overrides: Partial<MintQuote>): MintQuote {
+  return {
+    id: 'quote-id',
+    amount: 500,
+    unit: 'unit',
+    rune_id: '1527352:1',
+    method: 'unit',
+    request: 'tb1ptest123',
+    state: 'UNPAID',
+    expiry: Math.floor(Date.now() / 1000) + 3600,
+    created_at: Date.now(),
+    amount_paid: 0,
+    amount_issued: 0,
+    ...overrides,
   }
 }
 
@@ -57,6 +78,8 @@ describe('MintService', () => {
       createMintQuote: vi.fn(),
       findMintQuoteByIdOrThrow: vi.fn(),
       updateMintQuoteState: vi.fn(),
+      updateMintQuotePayment: vi.fn(),
+      incrementMintQuoteIssued: vi.fn(),
     } as unknown as QuoteRepository
 
     backendRegistry = new BackendRegistry()
@@ -66,6 +89,7 @@ describe('MintService', () => {
     mockKeyManager = {
       getKeysetByRuneIdAndUnit: vi.fn().mockResolvedValue({ id: 'keyset123' }),
       generateKeyset: vi.fn(),
+      getActiveKeysetsByUnit: vi.fn().mockResolvedValue([{ id: 'keyset123' }]),
     } as unknown as KeyManager
 
     mintService = new MintService(
@@ -76,22 +100,91 @@ describe('MintService', () => {
     )
   })
 
+  describe('createOnchainMintQuote', () => {
+    it('keeps UNIT on the onchain method and uses the configured rune id', async () => {
+      const onchainBackend = createMockBackend('unit', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(onchainBackend, [], ['unit'])
+      const service = new MintService(
+        mockMintCrypto,
+        mockQuoteRepo,
+        registry,
+        mockKeyManager
+      )
+      const pubkey = '02' + '11'.repeat(32)
+
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(async (quote) => ({
+        ...quote,
+        created_at: Date.now(),
+      } as any))
+
+      const result = await service.createOnchainMintQuote('unit', pubkey)
+
+      expect(onchainBackend.createDepositAddress).toHaveBeenCalledWith(
+        expect.any(String),
+        0n
+      )
+      expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 0,
+          unit: 'unit',
+          rune_id: '1527352:1',
+          method: 'onchain',
+          pubkey,
+          amount_paid: 0,
+          amount_issued: 0,
+        })
+      )
+      expect(result).toEqual(
+        expect.objectContaining({
+          request: 'tb1ptest123',
+          unit: 'unit',
+          pubkey,
+          amount_paid: 0,
+          amount_issued: 0,
+        })
+      )
+    })
+
+    it('still allows an explicit rune id for UNIT onchain quotes', async () => {
+      const onchainBackend = createMockBackend('unit', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(onchainBackend, [], ['unit'])
+      const service = new MintService(
+        mockMintCrypto,
+        mockQuoteRepo,
+        registry,
+        mockKeyManager
+      )
+
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(async (quote) => ({
+        ...quote,
+        created_at: Date.now(),
+      } as any))
+
+      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3')
+
+      expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          unit: 'unit',
+          rune_id: '840000:3',
+          method: 'onchain',
+        })
+      )
+    })
+  })
+
   describe('mintTokens - Amount Verification', () => {
     const quoteId = 'dc9713f24eab8a2f2c3acd405bc95672352ade634868be38c8ec8dfdc86a14fc'
 
     it('should mint tokens when deposit amount matches quote amount', async () => {
       const quoteAmount = 500 // smallest units
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
         amount: quoteAmount,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'PAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       // Deposit matches quote amount exactly
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -116,16 +209,11 @@ describe('MintService', () => {
     it('should REJECT when deposit amount is GREATER than quote amount', async () => {
       const quoteAmount = 500
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
         amount: quoteAmount,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'PAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       // THE ACTUAL BUG SCENARIO: User sent 2000 but quote was for 500
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -149,16 +237,11 @@ describe('MintService', () => {
     it('should REJECT when deposit amount is LESS than quote amount', async () => {
       const quoteAmount = 500
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
         amount: quoteAmount,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'PAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       // Underpayment
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -176,16 +259,10 @@ describe('MintService', () => {
     })
 
     it('should REJECT when deposit not found on-chain', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
-        amount: 500,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'PAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       // Deposit confirmed but amount undefined means not actually found
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -201,16 +278,10 @@ describe('MintService', () => {
     })
 
     it('should REJECT when deposit has insufficient confirmations', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
-        amount: 500,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'UNPAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       // Unconfirmed deposit
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -228,16 +299,10 @@ describe('MintService', () => {
     })
 
     it('should REJECT when output amounts do not sum to quote amount', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
-        amount: 500,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'PAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -258,16 +323,10 @@ describe('MintService', () => {
     })
 
     it('should REJECT already issued quote', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
-        amount: 500,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'ISSUED', // Already issued!
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -288,16 +347,10 @@ describe('MintService', () => {
     const quoteId = 'test-quote-123'
 
     it('should keep quote UNPAID when deposit amount mismatches', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
-        amount: 500,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'UNPAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       // Deposit confirmed but wrong amount
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -308,7 +361,7 @@ describe('MintService', () => {
         confirmations: 6,
       })
 
-      const result = await mintService.getMintQuote(quoteId)
+      const result = await mintService.getMintQuote(quoteId) as MintQuoteResponse
 
       // Quote should remain UNPAID
       expect(result.state).toBe('UNPAID')
@@ -316,16 +369,10 @@ describe('MintService', () => {
     })
 
     it('should mark quote PAID when deposit amount matches', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue({
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
-        amount: 500,
-        unit: 'unit',
-        rune_id: '1527352:1',
-        request: 'tb1ptest123',
         state: 'UNPAID',
-        expiry: Math.floor(Date.now() / 1000) + 3600,
-        created_at: Date.now(),
-      })
+      }))
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -335,7 +382,7 @@ describe('MintService', () => {
         confirmations: 6,
       })
 
-      const result = await mintService.getMintQuote(quoteId)
+      const result = await mintService.getMintQuote(quoteId) as MintQuoteResponse
 
       expect(result.state).toBe('PAID')
       expect(mockQuoteRepo.updateMintQuoteState).toHaveBeenCalledWith(quoteId, 'PAID', 'deposit_txid', 0)

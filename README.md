@@ -5,7 +5,7 @@ A Cashu ecash mint backed by Bitcoin and Bitcoin Runes, running inside an AWS Ni
 **Property the enclave gives you:** the operator of the EC2 instance cannot see plaintext TLS traffic, mint signing keys, or seed material. Updates to the mint code are publicly verifiable via the enclave's PCR0 fingerprint.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-green?logo=node.js)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.4+-green?logo=node.js)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -13,7 +13,7 @@ A Cashu ecash mint backed by Bitcoin and Bitcoin Runes, running inside an AWS Ni
 ## What this is
 
 - **Cashu protocol** — full NUT-00 through NUT-11 (blind signatures, P2PK, multisig, timelocks).
-- **Multi-unit** — Bitcoin (`sat`) and Bitcoin Runes (`unit`) backends behind a single mint.
+- **Multi-method / multi-unit** — BTC on-chain (`onchain`/`sat`), UNIT Runes (`onchain`/`unit`), and optional Lightning (`bolt11`/`sat` via LNbits) behind a single mint.
 - **Nitro Enclave deployment** — TLS termination, key derivation, and signing all happen inside the enclave; the parent EC2 host is treated as untrusted.
 - **KMS-sealed secrets** — `MINT_SEED` and `ENCRYPTION_KEY` are sealed by AWS KMS to a specific enclave fingerprint (PCR0). A different image cannot unseal them.
 
@@ -44,6 +44,8 @@ Postgres runs on the parent and is reached via vsock. Sensitive operations are s
   → [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 - **Deploying it on AWS?**
   → [`docs/deployment.md`](./docs/deployment.md) and [`docs/enclave-deployment.md`](./docs/enclave-deployment.md).
+- **Deploying it on GCP?**
+  → [`docs/gcp-confidential-deployment.md`](./docs/gcp-confidential-deployment.md).
 - **The trust-critical files** (read these to verify the security claims yourself):
   - [`parent/kms-policy.json`](./parent/kms-policy.json) — the KMS condition that gates decrypt on PCR0
   - [`enclave/nginx.conf`](./enclave/nginx.conf) — TLS terminates inside the enclave
@@ -76,7 +78,7 @@ PCR0 is published to the GitHub Actions run summary on every deploy and to S3 at
 src/         mint application (TypeScript, Fastify)
 enclave/     enclave-side image build (Dockerfile, nginx, entrypoint)
 parent/      parent EC2 scripts, systemd units, KMS policy, vsock proxies
-terraform/   AWS infra (VPC, EC2, IAM, KMS bootstrap)
+terraform/   AWS and GCP infra
 scripts/     dev/ops one-offs
 docs/        architecture, security, deployment docs
 examples/    sample configs (nginx, env, tfvars)
@@ -99,6 +101,9 @@ tests/       unit + integration
 | 09 | Restore signatures |
 | 10 | Spending conditions (P2PK) |
 | 11 | Pay-to-Pubkey (multisig, timelocks) |
+| 20 | Signature on mint quote |
+| 23 | BOLT11 Lightning method |
+| 26 | Draft on-chain BTC method |
 
 ## Security model (one-paragraph version)
 

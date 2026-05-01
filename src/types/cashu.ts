@@ -1,9 +1,4 @@
-/**
- * Re-export cashu-ts types for convenience
- */
 export type {
-  Proof as CashuProof,
-  SerializedBlindedSignature as BlindSignature,
   Token,
   MintKeys,
   MintKeyset,
@@ -16,9 +11,20 @@ export interface BlindedMessage {
   id: string // Keyset ID
 }
 
-// Extend Proof type with witness field
-import type { Proof as CashuProofBase } from '@cashu/cashu-ts'
-export interface Proof extends CashuProofBase {
+export interface BlindSignature {
+  id: string
+  amount: number
+  C_: string
+  dleq?: SerializedDLEQ
+}
+
+export interface Proof {
+  id: string
+  amount: number
+  secret: string
+  C: string
+  dleq?: SerializedDLEQ
+  p2pk_e?: string
   witness?: string | Record<string, unknown>
 }
 
@@ -44,6 +50,17 @@ export interface MintQuoteResponse {
   expiry: number
   amount: number
   unit: string
+  pubkey?: string
+}
+
+export interface OnchainMintQuoteResponse {
+  quote: string
+  request: string // Bitcoin deposit address
+  unit: string
+  expiry: number | null
+  pubkey: string
+  amount_paid: number
+  amount_issued: number
 }
 
 export interface MeltQuoteResponse {
@@ -55,6 +72,19 @@ export interface MeltQuoteResponse {
   request: string // Runes destination address
   unit: string
   txid?: string
+  payment_preimage?: string | null
+}
+
+export interface OnchainMeltQuoteResponse {
+  quote: string
+  request: string // Bitcoin destination address
+  amount: number
+  unit: string
+  fee: number
+  estimated_blocks: number
+  state: MeltQuoteState
+  expiry: number
+  outpoint?: string
 }
 
 export interface MintInfoResponse {

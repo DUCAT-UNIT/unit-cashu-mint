@@ -3,7 +3,7 @@ import { MintCrypto } from '../crypto/MintCrypto.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
 import { P2PKService } from './P2PKService.js'
-import { Proof, MeltQuoteResponse } from '../../types/cashu.js'
+import { Proof, MeltQuoteResponse, OnchainMeltQuoteResponse } from '../../types/cashu.js'
 import { AmountMismatchError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
@@ -28,7 +28,11 @@ export class MeltService {
     amount: number,
     unit: string,
     runeId: string,
-    destination: string
+    destination: string,
+    method: string = 'unit',
+    fee: number = 0,
+    estimatedBlocks?: number,
+    feeReserve: number = 0
   ): Promise<MeltQuoteResponse> {
     // Validate amount
     if (amount < env.MIN_MELT_AMOUNT || amount > env.MAX_MELT_AMOUNT) {
@@ -37,8 +41,13 @@ export class MeltService {
       )
     }
 
-    // Validate destination address
-    if (!destination.startsWith('bc1') && !destination.startsWith('tb1')) {
+    // Validate destination address for on-chain methods.
+    if (
+      method !== 'bolt11' &&
+      !destination.startsWith('bc1') &&
+      !destination.startsWith('tb1') &&
+      !destination.startsWith('bcrt1')
+    ) {
       throw new Error('Invalid Bitcoin address')
     }
 
@@ -50,7 +59,6 @@ export class MeltService {
     // For UNIT mints, we don't charge a fee in Cashu tokens
     // The mint pays the BTC network fee itself
     // Optional: Set a small service fee in UNIT (e.g., 1-2 UNIT)
-    const feeReserve = 0
 
     // Set expiry (1 hour from now for melts)
     const expiry = Math.floor(Date.now() / 1000) + 60 * 60
@@ -61,10 +69,13 @@ export class MeltService {
       amount,
       unit,
       rune_id: runeId,
+      method,
       request: destination,
       fee_reserve: feeReserve,
       state: 'UNPAID',
       expiry,
+      fee,
+      estimated_blocks: estimatedBlocks,
     })
 
     logger.info({ quoteId, amount, runeId, destination }, 'Melt quote created')
@@ -80,11 +91,84 @@ export class MeltService {
     }
   }
 
+  async createBolt11MeltQuote(
+    unit: string,
+    request: string,
+    amount?: number
+  ): Promise<MeltQuoteResponse> {
+    const decodedAmount = amount ?? this.decodeBolt11AmountSats(request)
+    const backend = this.backendRegistry.getByMethod('bolt11', unit)
+    const feeReserve = await backend.estimateFee(request, BigInt(decodedAmount))
+
+    return this.createMeltQuote(
+      decodedAmount,
+      unit,
+      'btc:0',
+      request,
+      'bolt11',
+      0,
+      undefined,
+      feeReserve
+    )
+  }
+
+  async createOnchainMeltQuotes(
+    amount: number,
+    unit: string,
+    destination: string,
+    runeId?: string
+  ): Promise<OnchainMeltQuoteResponse[]> {
+    if (amount < env.MIN_MELT_AMOUNT || amount > env.MAX_MELT_AMOUNT) {
+      throw new Error(
+        `Amount must be between ${env.MIN_MELT_AMOUNT} and ${env.MAX_MELT_AMOUNT}`
+      )
+    }
+
+    const backend = this.backendRegistry.getByMethod('onchain', unit)
+    const fee = await backend.estimateFee(destination, BigInt(amount))
+    const quote = await this.createMeltQuote(
+      amount,
+      unit,
+      this.defaultRuneIdForUnit(unit, runeId),
+      destination,
+      'onchain',
+      fee,
+      1
+    )
+
+    return [
+      {
+        quote: quote.quote,
+        request: quote.request,
+        amount: quote.amount,
+        unit: quote.unit,
+        fee,
+        estimated_blocks: 1,
+        state: quote.state,
+        expiry: quote.expiry,
+      },
+    ]
+  }
+
   /**
    * Get melt quote status
    */
-  async getMeltQuote(quoteId: string): Promise<MeltQuoteResponse> {
+  async getMeltQuote(quoteId: string): Promise<MeltQuoteResponse | OnchainMeltQuoteResponse> {
     const quote = await this.quoteRepo.findMeltQuoteByIdOrThrow(quoteId)
+
+    if (quote.method === 'onchain') {
+      return {
+        quote: quote.id,
+        request: quote.request,
+        amount: quote.amount,
+        unit: quote.unit,
+        fee: quote.fee ?? quote.fee_paid ?? 0,
+        estimated_blocks: quote.estimated_blocks ?? 1,
+        state: quote.state,
+        expiry: quote.expiry,
+        outpoint: quote.outpoint ?? quote.txid,
+      }
+    }
 
     return {
       quote: quote.id,
@@ -95,6 +179,7 @@ export class MeltService {
       request: quote.request,
       unit: quote.unit,
       txid: quote.txid,
+      payment_preimage: quote.method === 'bolt11' ? quote.txid ?? null : undefined,
     }
   }
 
@@ -104,7 +189,9 @@ export class MeltService {
   async meltTokens(
     quoteId: string,
     inputs: Proof[]
-  ): Promise<{ state: string; paid: boolean; payment_preimage?: string }> {
+  ): Promise<
+    { state: string; paid: boolean; payment_preimage?: string } | MeltQuoteResponse | OnchainMeltQuoteResponse
+  > {
     logger.info({ quoteId, inputCount: inputs.length }, 'Melting tokens')
 
     // 1. Get quote
@@ -119,7 +206,9 @@ export class MeltService {
     // 3. Verify input amounts cover quote amount
     // (No fee required - mint pays the BTC network fee)
     const inputAmount = this.mintCrypto.sumProofs(inputs)
-    const requiredAmount = quote.amount
+    const requiredAmount = quote.method === 'onchain'
+      ? quote.amount + (quote.fee ?? 0)
+      : quote.amount + quote.fee_reserve
 
     if (inputAmount < requiredAmount) {
       throw new AmountMismatchError(requiredAmount, inputAmount)
@@ -160,19 +249,53 @@ export class MeltService {
 
     // 8. Initiate withdrawal using the appropriate backend
     try {
-      const backend = this.backendRegistry.get(quote.unit)
+      const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
       const result = await backend.withdraw(
         quote.request, // destination
         BigInt(quote.amount)
       )
 
-      // Update quote to PAID with txid
-      await this.quoteRepo.updateMeltQuoteState(quoteId, 'PAID', result.txid)
+      const nextState = quote.method === 'onchain' ? 'PENDING' : 'PAID'
+      const outpoint = quote.method === 'onchain' ? `${result.txid}:0` : undefined
+      await this.quoteRepo.updateMeltQuoteState(
+        quoteId,
+        nextState,
+        result.txid,
+        result.fee_paid,
+        outpoint
+      )
 
       logger.info(
         { quoteId, txid: result.txid, feePaid: result.fee_paid, unit: quote.unit },
         'Withdrawal completed - proofs permanently burned'
       )
+
+      if (quote.method === 'onchain') {
+        return {
+          quote: quote.id,
+          request: quote.request,
+          amount: quote.amount,
+          unit: quote.unit,
+          fee: quote.fee ?? result.fee_paid,
+          estimated_blocks: quote.estimated_blocks ?? 1,
+          state: 'PENDING',
+          expiry: quote.expiry,
+          outpoint,
+        }
+      }
+
+      if (quote.method === 'bolt11') {
+        return {
+          quote: quote.id,
+          amount: quote.amount,
+          fee_reserve: quote.fee_reserve,
+          state: 'PAID',
+          expiry: quote.expiry,
+          request: quote.request,
+          unit: quote.unit,
+          payment_preimage: result.txid,
+        }
+      }
 
       return {
         state: 'PAID',
@@ -226,5 +349,48 @@ export class MeltService {
     // For now, just mark as failed
     await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
     logger.error({ quoteId }, 'Melt failed - withdrawal unsuccessful')
+  }
+
+  private decodeBolt11AmountSats(invoice: string): number {
+    const normalized = invoice.toLowerCase()
+    const match = normalized.match(/^ln(?:bc|tb|bcrt|sb)(\d+)([munp]?)/)
+    if (!match) {
+      throw new Error('Amountless or invalid bolt11 invoice is not supported')
+    }
+
+    const amount = Number(match[1])
+    const multiplier = match[2] || ''
+    const sats = multiplier === 'm'
+      ? amount * 100_000
+      : multiplier === 'u'
+        ? amount * 100
+        : multiplier === 'n'
+          ? amount / 10
+          : multiplier === 'p'
+            ? amount / 10_000
+            : amount * 100_000_000
+
+    if (!Number.isInteger(sats) || sats <= 0) {
+      throw new Error('Bolt11 invoice amount must resolve to whole sats')
+    }
+
+    return sats
+  }
+
+  private defaultRuneIdForUnit(unit: string, runeId?: string): string {
+    if (runeId) {
+      return runeId
+    }
+
+    if (unit === 'unit') {
+      const supportedRuneId = env.SUPPORTED_RUNES_ARRAY[0]
+      if (!supportedRuneId) {
+        throw new Error('Rune ID required for unit')
+      }
+
+      return supportedRuneId
+    }
+
+    return 'btc:0'
   }
 }

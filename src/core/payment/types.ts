@@ -26,6 +26,9 @@ export interface WithdrawalResult {
  * Implemented by BTCBackend and RunesBackend
  */
 export interface IPaymentBackend {
+  /** The Cashu payment method this backend handles (e.g., 'onchain', 'bolt11', 'unit') */
+  readonly method?: string
+
   /** The unit this backend handles (e.g., 'btc', 'unit') */
   readonly unit: string
 

@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars and fill in values.
+
+project_id  = "your-gcp-project-id"
+region      = "us-central1"
+zone        = "us-central1-a"
+environment = "prod"
+
+domain_name = "cashu-mint.yourdomain.com"
+tls_email   = "ops@yourdomain.com"
+
+repo_url = "https://github.com/your-org/mint-server.git"
+repo_ref = "main"
+
+# N2D uses AMD SEV. For stronger hardware-backed attestation, choose a zone and
+# machine family that supports SEV_SNP or TDX and set confidential_instance_type.
+machine_type               = "n2d-standard-4"
+confidential_instance_type = "SEV"
+boot_disk_size_gb          = 50
+
+mint_env_secret_id = "ducat-mint-env"
+
+# Generate with: openssl rand -base64 24
+db_password = "CHANGE_THIS_TO_A_SECURE_PASSWORD"
+
+# Leave empty to disable direct SSH firewall access.
+admin_cidr_blocks = []

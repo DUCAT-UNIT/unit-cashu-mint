@@ -1,10 +1,17 @@
-import { randomBytes } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
+import { schnorr } from '@noble/secp256k1'
 import { MintCrypto } from '../crypto/MintCrypto.js'
 import { KeyManager } from '../crypto/KeyManager.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
-import { BlindedMessage, BlindSignature, MintQuoteResponse } from '../../types/cashu.js'
+import {
+  BlindedMessage,
+  BlindSignature,
+  MintQuoteResponse,
+  OnchainMintQuoteResponse,
+} from '../../types/cashu.js'
 import {
   AmountMismatchError,
+  MintError,
 } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
@@ -24,7 +31,9 @@ export class MintService {
   async createMintQuote(
     amount: number,
     unit: string,
-    runeId: string
+    runeId: string,
+    method: string = 'unit',
+    pubkey?: string
   ): Promise<MintQuoteResponse> {
     // Validate amount
     if (amount < env.MIN_MINT_AMOUNT || amount > env.MAX_MINT_AMOUNT) {
@@ -58,7 +67,7 @@ export class MintService {
     const quoteId = randomBytes(32).toString('hex')
 
     // Get the appropriate backend for this unit
-    const backend = this.backendRegistry.get(unit)
+    const backend = this.backendRegistry.getByMethod(method, unit)
 
     // Generate deposit address using the backend
     // Amount is already in smallest units (integer)
@@ -76,9 +85,13 @@ export class MintService {
       amount,
       unit,
       rune_id: runeId,
+      method,
       request: depositAddress,
       state: 'UNPAID',
       expiry,
+      pubkey,
+      amount_paid: 0,
+      amount_issued: 0,
     })
 
     logger.info({ quoteId, amount, runeId, depositAddress }, 'Mint quote created')
@@ -90,20 +103,58 @@ export class MintService {
       expiry: quote.expiry,
       amount: quote.amount,
       unit: quote.unit,
+      pubkey: quote.pubkey,
     }
+  }
+
+  async createOnchainMintQuote(
+    unit: string,
+    pubkey: string,
+    runeId?: string
+  ): Promise<OnchainMintQuoteResponse> {
+    this.validatePubkey(pubkey)
+    const effectiveRuneId = this.defaultRuneIdForUnit(unit, runeId)
+    await this.ensureKeyset(effectiveRuneId, unit)
+
+    const quoteId = randomBytes(32).toString('hex')
+    const backend = this.backendRegistry.getByMethod('onchain', unit)
+    const depositAddress = await backend.createDepositAddress(quoteId, 0n)
+    const expiry = Math.floor(Date.now() / 1000) + 24 * 60 * 60
+
+    const quote = await this.quoteRepo.createMintQuote({
+      id: quoteId,
+      amount: 0,
+      unit,
+      rune_id: effectiveRuneId,
+      method: 'onchain',
+      request: depositAddress,
+      state: 'UNPAID',
+      expiry,
+      pubkey,
+      amount_paid: 0,
+      amount_issued: 0,
+    })
+
+    logger.info({ quoteId, unit, depositAddress }, 'Onchain mint quote created')
+
+    return this.toOnchainMintQuoteResponse(quote)
   }
 
   /**
    * Get mint quote status
    * Also checks the blockchain for deposit confirmation
    */
-  async getMintQuote(quoteId: string): Promise<MintQuoteResponse> {
+  async getMintQuote(quoteId: string): Promise<MintQuoteResponse | OnchainMintQuoteResponse> {
     const quote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
+
+    if (quote.method === 'onchain') {
+      return this.getOnchainMintQuote(quoteId)
+    }
 
     // If quote is still UNPAID, check for deposits
     if (quote.state === 'UNPAID') {
       try {
-        const backend = this.backendRegistry.get(quote.unit)
+        const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
         // Pass expected amount for exact UTXO matching (helps BTC backend with shared addresses)
         const depositStatus = await backend.checkDeposit(quoteId, quote.request, false, BigInt(quote.amount))
 
@@ -171,12 +222,18 @@ export class MintService {
    */
   async mintTokens(
     quoteId: string,
-    outputs: BlindedMessage[]
+    outputs: BlindedMessage[],
+    signature?: string
   ): Promise<{ signatures: BlindSignature[] }> {
     logger.info({ quoteId, outputCount: outputs.length }, 'Minting tokens')
 
     // 1. Get quote
     const quote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
+    this.verifyMintQuoteSignature(quoteId, outputs, quote.pubkey, signature)
+
+    if (quote.method === 'onchain') {
+      return this.mintOnchainTokens(quoteId, outputs)
+    }
 
     // 2. ALWAYS verify deposit on-chain before issuing tokens
     // This prevents:
@@ -189,7 +246,7 @@ export class MintService {
     )
 
     // Get the appropriate backend for this quote's unit
-    const backend = this.backendRegistry.get(quote.unit)
+    const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
 
     // If quote has txid/vout stored, verify that specific UTXO directly
     // Otherwise fall back to scanning all UTXOs (for old quotes without txid/vout)
@@ -219,8 +276,12 @@ export class MintService {
 
     // CRITICAL: Verify actual Runes amount received matches quote amount
     // This prevents exploitation where user requests 1000 but only sends 100
-    if (depositStatus.amount !== undefined) {
-      const receivedAmount = depositStatus.amount
+    const depositAmount = depositStatus.amount ?? (
+      quote.method === 'bolt11' ? BigInt(quote.amount) : undefined
+    )
+
+    if (depositAmount !== undefined) {
+      const receivedAmount = depositAmount
       const expectedAmount = BigInt(quote.amount)
 
       if (receivedAmount !== expectedAmount) {
@@ -275,5 +336,169 @@ export class MintService {
     logger.info({ quoteId, signatureCount: signatures.length }, 'Tokens minted successfully')
 
     return { signatures }
+  }
+
+  private async mintOnchainTokens(
+    quoteId: string,
+    outputs: BlindedMessage[]
+  ): Promise<{ signatures: BlindSignature[] }> {
+    const quote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
+    const quoteState = await this.getOnchainMintQuote(quoteId)
+    const availableAmount = quoteState.amount_paid - quoteState.amount_issued
+    const totalOutput = outputs.reduce((sum, o) => sum + o.amount, 0)
+
+    if (totalOutput <= 0) {
+      throw new AmountMismatchError(1, totalOutput)
+    }
+
+    if (totalOutput > availableAmount) {
+      throw new AmountMismatchError(availableAmount, totalOutput)
+    }
+
+    await this.ensureOutputsUseUnit(outputs, quote.unit)
+    const signatures = await this.mintCrypto.signBlindedMessages(outputs)
+    await this.quoteRepo.incrementMintQuoteIssued(quoteId, totalOutput)
+
+    logger.info({ quoteId, totalOutput, signatureCount: signatures.length }, 'Onchain tokens minted')
+
+    return { signatures }
+  }
+
+  private async getOnchainMintQuote(quoteId: string): Promise<OnchainMintQuoteResponse> {
+    const quote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
+    const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
+
+    try {
+      const depositStatus = await backend.checkDeposit(quoteId, quote.request, true)
+      const amountPaid = depositStatus.amount ? Number(depositStatus.amount) : quote.amount_paid
+
+      if (amountPaid > quote.amount_paid) {
+        await this.quoteRepo.updateMintQuotePayment(
+          quoteId,
+          amountPaid,
+          depositStatus.txid,
+          depositStatus.vout
+        )
+
+        quote.amount_paid = amountPaid
+        quote.txid = depositStatus.txid
+        quote.vout = depositStatus.vout
+      }
+    } catch (error) {
+      logger.warn({ error, quoteId }, 'Failed to check onchain mint quote status')
+    }
+
+    return this.toOnchainMintQuoteResponse(quote)
+  }
+
+  private toOnchainMintQuoteResponse(quote: {
+    id: string
+    request: string
+    unit: string
+    expiry: number
+    pubkey?: string
+    amount_paid: number
+    amount_issued: number
+  }): OnchainMintQuoteResponse {
+    if (!quote.pubkey) {
+      throw new MintError('Onchain mint quote missing pubkey', 20009)
+    }
+
+    return {
+      quote: quote.id,
+      request: quote.request,
+      unit: quote.unit,
+      expiry: quote.expiry,
+      pubkey: quote.pubkey,
+      amount_paid: quote.amount_paid,
+      amount_issued: quote.amount_issued,
+    }
+  }
+
+  private async ensureKeyset(runeId: string, unit: string): Promise<void> {
+    const existingKeyset = await this.keyManager.getKeysetByRuneIdAndUnit(runeId, unit)
+
+    if (existingKeyset) {
+      return
+    }
+
+    try {
+      await this.keyManager.generateKeyset(runeId, unit)
+      logger.info({ runeId, unit }, 'Generated new keyset')
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        logger.debug({ runeId, unit }, 'Keyset already exists (race condition), continuing')
+        return
+      }
+
+      throw error
+    }
+  }
+
+  private async ensureOutputsUseUnit(outputs: BlindedMessage[], unit: string): Promise<void> {
+    const activeKeysets = await this.keyManager.getActiveKeysetsByUnit(unit)
+    const keysetIds = new Set(activeKeysets.map((keyset) => keyset.id))
+
+    for (const output of outputs) {
+      if (!keysetIds.has(output.id)) {
+        throw new MintError(`Output keyset does not match quote unit`, 20001, `id=${output.id}`)
+      }
+    }
+  }
+
+  private verifyMintQuoteSignature(
+    quoteId: string,
+    outputs: BlindedMessage[],
+    pubkey?: string,
+    signature?: string
+  ): void {
+    if (!pubkey) {
+      return
+    }
+
+    if (!signature) {
+      throw new MintError('Mint quote requires a valid signature', 20008)
+    }
+
+    const message = quoteId + outputs.map((output) => output.B_).join('')
+    const digest = createHash('sha256').update(message, 'utf8').digest()
+    const xOnlyPubkey = pubkey.length === 66 ? pubkey.slice(2) : pubkey
+    let isValid = false
+    try {
+      isValid = schnorr.verify(
+        Buffer.from(signature, 'hex'),
+        digest,
+        Buffer.from(xOnlyPubkey, 'hex')
+      )
+    } catch {
+      isValid = false
+    }
+
+    if (!isValid) {
+      throw new MintError('Mint quote requires a valid signature', 20008)
+    }
+  }
+
+  private validatePubkey(pubkey: string): void {
+    if (!/^(02|03)[0-9a-fA-F]{64}$/.test(pubkey)) {
+      throw new MintError('Mint quote requires a valid pubkey', 20009)
+    }
+  }
+
+  private defaultRuneIdForUnit(unit: string, runeId?: string): string {
+    if (runeId) {
+      return runeId
+    }
+
+    if (unit === 'unit') {
+      const supportedRuneId = env.SUPPORTED_RUNES_ARRAY[0]
+      if (!supportedRuneId) {
+        throw new MintError('Rune ID required for unit', 20010)
+      }
+
+      return supportedRuneId
+    }
+
+    return 'btc:0'
   }
 }

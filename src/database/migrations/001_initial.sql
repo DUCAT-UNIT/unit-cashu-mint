@@ -23,18 +23,23 @@ CREATE TABLE IF NOT EXISTS mint_quotes (
   amount BIGINT NOT NULL,
   unit VARCHAR(20) NOT NULL,
   rune_id VARCHAR(50) NOT NULL,
+  method VARCHAR(32) NOT NULL DEFAULT 'unit',
   request TEXT NOT NULL,  -- Deposit address
   state VARCHAR(20) NOT NULL CHECK (state IN ('UNPAID', 'PAID', 'ISSUED')),
   expiry BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
   paid_at BIGINT,
   txid VARCHAR(64),
-  vout INTEGER
+  vout INTEGER,
+  pubkey VARCHAR(66),
+  amount_paid BIGINT NOT NULL DEFAULT 0,
+  amount_issued BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_mint_quotes_state ON mint_quotes(state, expiry);
 CREATE INDEX IF NOT EXISTS idx_mint_quotes_request ON mint_quotes(request);
 CREATE INDEX IF NOT EXISTS idx_mint_quotes_txid ON mint_quotes(txid);
+CREATE INDEX IF NOT EXISTS idx_mint_quotes_method_unit ON mint_quotes(method, unit);
 
 -- Melt quotes
 CREATE TABLE IF NOT EXISTS melt_quotes (
@@ -43,17 +48,22 @@ CREATE TABLE IF NOT EXISTS melt_quotes (
   fee_reserve BIGINT NOT NULL,
   unit VARCHAR(20) NOT NULL,
   rune_id VARCHAR(50) NOT NULL,
+  method VARCHAR(32) NOT NULL DEFAULT 'unit',
   request TEXT NOT NULL,  -- Destination address
   state VARCHAR(20) NOT NULL CHECK (state IN ('UNPAID', 'PENDING', 'PAID')),
   expiry BIGINT NOT NULL,
   created_at BIGINT NOT NULL,
   paid_at BIGINT,
   txid VARCHAR(64),
-  fee_paid BIGINT
+  fee_paid BIGINT,
+  fee BIGINT,
+  estimated_blocks INTEGER,
+  outpoint TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_melt_quotes_state ON melt_quotes(state, expiry);
 CREATE INDEX IF NOT EXISTS idx_melt_quotes_txid ON melt_quotes(txid);
+CREATE INDEX IF NOT EXISTS idx_melt_quotes_method_unit ON melt_quotes(method, unit);
 
 -- Proofs (spent tracking)
 CREATE TABLE IF NOT EXISTS proofs (

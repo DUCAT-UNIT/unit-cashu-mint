@@ -1,14 +1,24 @@
+import { createHash } from 'crypto'
+import * as bitcoin from 'bitcoinjs-lib'
+import { BIP32Factory } from 'bip32'
+import * as ecc from '@bitcoinerlab/secp256k1'
 import { EsploraClient } from '../runes/api-client.js'
 import { BTCTxBuilder } from './tx-builder.js'
 import { BTCConfig, BTCUtxo } from './types.js'
 import { IPaymentBackend, DepositStatus, WithdrawalResult } from '../core/payment/types.js'
 import { logger } from '../utils/logger.js'
+import { env } from '../config/env.js'
+import { query } from '../database/db.js'
+
+const bip32 = BIP32Factory(ecc)
+bitcoin.initEccLib(ecc)
 
 /**
  * Bitcoin (BTC) payment backend
  * Handles BTC deposits and withdrawals for the mint
  */
 export class BTCBackend implements IPaymentBackend {
+  readonly method = 'onchain'
   readonly unit = 'btc'
 
   private esploraClient: EsploraClient
@@ -41,9 +51,7 @@ export class BTCBackend implements IPaymentBackend {
   ): Promise<string> {
     logger.info({ quoteId, amount: amount.toString() }, 'Creating BTC deposit address')
 
-    // For simplicity, use the mint's main address
-    // In production, could derive per-quote addresses using HD wallet
-    return this.config.mintAddress
+    return this.deriveDepositAddress(quoteId).address
   }
 
   /**
@@ -291,14 +299,16 @@ export class BTCBackend implements IPaymentBackend {
           confirmations: u.status.block_height
             ? blockHeight - u.status.block_height + 1
             : 0,
+          accountIndex: 0,
         }))
+      confirmedUtxos.push(...await this.getConfirmedQuoteUtxos(blockHeight))
 
       if (confirmedUtxos.length === 0) {
         throw new Error('No confirmed UTXOs available for withdrawal')
       }
 
       // Build transaction
-      const { psbt, fee } = this.txBuilder.buildTransaction(
+      const { psbt, fee, selectedUtxos } = this.txBuilder.buildTransaction(
         confirmedUtxos,
         destination,
         amount,
@@ -307,7 +317,7 @@ export class BTCBackend implements IPaymentBackend {
       )
 
       // Sign and extract
-      const { signedTxHex, txid } = this.txBuilder.signAndExtract(psbt)
+      const { signedTxHex, txid } = this.txBuilder.signAndExtract(psbt, selectedUtxos)
 
       // Broadcast transaction
       const broadcastedTxid = await this.esploraClient.broadcastTransaction(signedTxHex)
@@ -366,6 +376,10 @@ export class BTCBackend implements IPaymentBackend {
         }
       }
 
+      for (const utxo of await this.getConfirmedQuoteUtxos(blockHeight)) {
+        balance += BigInt(utxo.value)
+      }
+
       return balance
     } catch (error) {
       logger.error(
@@ -381,5 +395,79 @@ export class BTCBackend implements IPaymentBackend {
    */
   getMintAddress(): string {
     return this.config.mintAddress
+  }
+
+  private deriveDepositAddress(quoteId: string): { address: string; accountIndex: number } {
+    const accountIndex = this.quoteAccountIndex(quoteId)
+    const seed = Buffer.from(env.MINT_SEED, 'hex')
+    const root = bip32.fromSeed(seed, this.txBuilder.getNetwork())
+    const child = root.derivePath(`m/84'/1'/0'/0/${accountIndex}`)
+    const payment = bitcoin.payments.p2wpkh({
+      pubkey: Buffer.from(child.publicKey),
+      network: this.txBuilder.getNetwork(),
+    })
+
+    if (!payment.address) {
+      throw new Error('Failed to derive BTC deposit address')
+    }
+
+    return { address: payment.address, accountIndex }
+  }
+
+  private quoteAccountIndex(quoteId: string): number {
+    if (!quoteId) {
+      return 0
+    }
+
+    const digest = createHash('sha256').update(quoteId).digest()
+    return digest.readUInt32BE(0) & 0x7fffffff
+  }
+
+  private async getConfirmedQuoteUtxos(blockHeight: number): Promise<BTCUtxo[]> {
+    const utxos: BTCUtxo[] = []
+    try {
+      const result = await query<{ id: string; request: string }>(
+        `
+        SELECT DISTINCT ON (request) id, request
+        FROM mint_quotes
+        WHERE unit IN ('sat', 'btc')
+          AND request <> $1
+        ORDER BY request, created_at DESC
+      `,
+        [this.config.mintAddress]
+      )
+
+      for (const row of result.rows) {
+        const accountIndex = this.quoteAccountIndex(row.id)
+        const addressUtxos = await this.esploraClient.getAddressUtxos(row.request)
+        for (const utxo of addressUtxos) {
+          if (!utxo.status.confirmed) {
+            continue
+          }
+
+          const confirmations = utxo.status.block_height
+            ? blockHeight - utxo.status.block_height + 1
+            : 0
+
+          if (confirmations >= this.config.minConfirmations) {
+            utxos.push({
+              txid: utxo.txid,
+              vout: utxo.vout,
+              value: utxo.value,
+              address: row.request,
+              confirmations,
+              accountIndex,
+            })
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Unable to scan quote deposit addresses'
+      )
+    }
+
+    return utxos
   }
 }

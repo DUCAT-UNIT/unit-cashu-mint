@@ -10,7 +10,7 @@ Step-by-step instructions for deploying the Ducat Mint Server into an AWS Nitro 
 - Docker running (for enclave image builds)
 - An EC2 key pair created in the target region
 - A registered domain name (for TLS certificate)
-- Node.js 20+ and npm installed locally
+- Node.js 22.4+ and npm installed locally
 
 ## Overview
 

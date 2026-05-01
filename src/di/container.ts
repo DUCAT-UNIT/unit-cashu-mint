@@ -10,6 +10,7 @@ import { MeltService } from '../core/services/MeltService.js'
 import { CheckStateService } from '../core/services/CheckStateService.js'
 import { RunesBackend } from '../runes/RunesBackend.js'
 import { BTCBackend } from '../btc/BTCBackend.js'
+import { LNbitsBackend } from '../lightning/LNbitsBackend.js'
 import { BackendRegistry } from '../core/payment/BackendRegistry.js'
 import { BackgroundTaskManager } from '../services/BackgroundTaskManager.js'
 import { env } from '../config/env.js'
@@ -69,13 +70,17 @@ export function initializeContainer(): DIContainer {
   // Register Runes backend if 'unit' is enabled
   if (env.SUPPORTED_UNITS_ARRAY.includes('unit')) {
     const runesBackend = new RunesBackend(db)
-    backendRegistry.register(runesBackend)
+    backendRegistry.register(runesBackend, [], ['unit', 'runes'])
     container.register('runesBackend', runesBackend)
-    logger.info({ unit: 'unit' }, 'Registered Runes backend')
+    logger.info(
+      { method: 'onchain', unit: 'unit', legacyMethods: ['unit', 'runes'] },
+      'Registered Runes backend'
+    )
   }
 
-  // Register BTC backend if 'btc' unit is enabled
-  if (env.SUPPORTED_UNITS_ARRAY.includes('btc')) {
+  // Register BTC backend if a Bitcoin unit is enabled. "sat" is what Cashu
+  // wallets expect; "btc" remains an alias for older Ducat clients.
+  if (env.SUPPORTS_BITCOIN) {
     const btcBackend = new BTCBackend({
       mintAddress: env.MINT_BTC_ADDRESS!,
       mintPubkey: env.MINT_BTC_PUBKEY || '',
@@ -83,9 +88,21 @@ export function initializeContainer(): DIContainer {
       network: env.NETWORK,
       minConfirmations: env.MINT_CONFIRMATIONS,
     })
-    backendRegistry.register(btcBackend)
+    backendRegistry.register(btcBackend, ['sat'])
     container.register('btcBackend', btcBackend)
-    logger.info({ unit: 'btc' }, 'Registered BTC backend')
+    logger.info({ unit: 'btc', aliases: ['sat'] }, 'Registered BTC backend')
+  }
+
+  if (env.SUPPORTS_LIGHTNING) {
+    const lightningBackend = new LNbitsBackend({
+      baseUrl: env.LNBITS_URL!,
+      invoiceKey: env.LNBITS_INVOICE_KEY!,
+      adminKey: env.LNBITS_ADMIN_KEY!,
+      feeReserve: env.LIGHTNING_FEE_RESERVE,
+    })
+    backendRegistry.register(lightningBackend)
+    container.register('lightningBackend', lightningBackend)
+    logger.info({ method: 'bolt11', unit: 'sat' }, 'Registered Lightning backend')
   }
 
   container.register('backendRegistry', backendRegistry)

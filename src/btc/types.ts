@@ -21,4 +21,5 @@ export interface BTCUtxo {
   value: number // sats
   address: string
   confirmations?: number
+  accountIndex?: number
 }

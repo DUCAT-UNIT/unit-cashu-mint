@@ -7,13 +7,31 @@ import { MintError } from '../../utils/errors.js'
  */
 export class BackendRegistry {
   private backends = new Map<string, IPaymentBackend>()
+  private methodBackends = new Map<string, IPaymentBackend>()
 
   /**
    * Register a payment backend
    * @param backend - The backend to register
+   * @param aliases - Additional unit aliases that should route to this backend
+   * @param methodAliases - Additional payment method aliases for legacy routes
    */
-  register(backend: IPaymentBackend): void {
+  register(
+    backend: IPaymentBackend,
+    aliases: string[] = [],
+    methodAliases: string[] = []
+  ): void {
     this.backends.set(backend.unit, backend)
+    const methods = [backend.method ?? backend.unit, ...methodAliases]
+    for (const method of methods) {
+      this.methodBackends.set(this.methodKey(method, backend.unit), backend)
+    }
+
+    for (const alias of aliases) {
+      this.backends.set(alias, backend)
+      for (const method of methods) {
+        this.methodBackends.set(this.methodKey(method, alias), backend)
+      }
+    }
   }
 
   /**
@@ -30,12 +48,25 @@ export class BackendRegistry {
     return backend
   }
 
+  getByMethod(method: string, unit: string): IPaymentBackend {
+    const backend = this.methodBackends.get(this.methodKey(method, unit))
+    if (!backend) {
+      throw new MintError(
+        `Unsupported method/unit: ${method}/${unit}`,
+        20000,
+        `method=${method}, unit=${unit}`
+      )
+    }
+
+    return backend
+  }
+
   /**
    * Get all registered backends
    * @returns Array of all backends
    */
   getAll(): IPaymentBackend[] {
-    return Array.from(this.backends.values())
+    return Array.from(new Set(this.backends.values()))
   }
 
   /**
@@ -47,11 +78,19 @@ export class BackendRegistry {
     return this.backends.has(unit)
   }
 
+  hasMethod(method: string, unit: string): boolean {
+    return this.methodBackends.has(this.methodKey(method, unit))
+  }
+
   /**
    * Get all supported units
    * @returns Array of supported unit strings
    */
   getSupportedUnits(): string[] {
     return Array.from(this.backends.keys())
+  }
+
+  private methodKey(method: string | undefined, unit: string): string {
+    return `${method ?? unit}:${unit}`
   }
 }

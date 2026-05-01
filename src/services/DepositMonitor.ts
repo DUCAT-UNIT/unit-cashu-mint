@@ -119,21 +119,31 @@ export class DepositMonitor {
       // Check each quote for deposits
       for (const quote of quotesToCheck) {
         try {
-          // Get the appropriate backend for this quote's unit
-          const backend = this.backendRegistry.get(quote.unit)
+          // Get the appropriate backend for this quote's method/unit pair.
+          const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
           const depositStatus = await backend.checkDeposit(
             quote.id,
-            quote.request
+            quote.request,
+            false,
+            quote.method === 'onchain' ? undefined : BigInt(quote.amount)
           )
 
           if (depositStatus.confirmed) {
-            // Update quote to PAID with txid/vout for later verification
-            await this.quoteRepo.updateMintQuoteState(
-              quote.id,
-              'PAID',
-              depositStatus.txid,
-              depositStatus.vout
-            )
+            if (quote.method === 'onchain' && depositStatus.amount !== undefined) {
+              await this.quoteRepo.updateMintQuotePayment(
+                quote.id,
+                Number(depositStatus.amount),
+                depositStatus.txid,
+                depositStatus.vout
+              )
+            } else {
+              await this.quoteRepo.updateMintQuoteState(
+                quote.id,
+                'PAID',
+                depositStatus.txid,
+                depositStatus.vout
+              )
+            }
             confirmedCount++
 
             logger.info(
@@ -198,6 +208,7 @@ declare module '../database/repositories/QuoteRepository.js' {
         amount: number
         unit: string
         rune_id: string
+        method: string
         request: string
         state: string
         expiry: number

@@ -10,6 +10,7 @@ import { meltRoutes } from './api/routes/melt.js'
 import { keysRoutes } from './api/routes/keys.js'
 import { checkStateRoutes } from './api/routes/checkstate.js'
 import { dashboardRoutes } from './api/routes/dashboard.js'
+import { buildMintInfo } from './mint-info.js'
 
 // Augment FastifyInstance with our DI container
 declare module 'fastify' {
@@ -63,45 +64,7 @@ export async function createServer() {
 
   // API routes
   server.get('/v1/info', async () => {
-    // Build methods list from supported units
-    const mintMethods = env.SUPPORTED_UNITS_ARRAY.map((unit) => ({
-      method: unit,
-      unit: unit,
-      min_amount: env.MIN_MINT_AMOUNT,
-      max_amount: env.MAX_MINT_AMOUNT,
-    }))
-
-    const meltMethods = env.SUPPORTED_UNITS_ARRAY.map((unit) => ({
-      method: unit,
-      unit: unit,
-      min_amount: env.MIN_MELT_AMOUNT,
-      max_amount: env.MAX_MELT_AMOUNT,
-    }))
-
-    return {
-      name: env.MINT_NAME,
-      pubkey: env.MINT_PUBKEY,
-      version: '0.1.0',
-      description: env.MINT_DESCRIPTION,
-      contact: [
-        env.MINT_CONTACT_EMAIL && { method: 'email', info: env.MINT_CONTACT_EMAIL },
-        env.MINT_CONTACT_NOSTR && { method: 'nostr', info: env.MINT_CONTACT_NOSTR },
-      ].filter(Boolean),
-      motd: 'Welcome to Ducat UNIT Mint!',
-      nuts: {
-        '4': {
-          methods: mintMethods,
-          disabled: false,
-        },
-        '5': {
-          methods: meltMethods,
-          disabled: false,
-        },
-        '7': { supported: true },
-        '10': { supported: true },
-        '11': { supported: true },
-      },
-    }
+    return buildMintInfo(env)
   })
 
   // Error handler

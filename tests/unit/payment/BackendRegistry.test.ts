@@ -4,7 +4,10 @@ import { IPaymentBackend, DepositStatus, WithdrawalResult } from '../../../src/c
 
 // Mock backend for testing
 class MockBackend implements IPaymentBackend {
-  constructor(public readonly unit: string) {}
+  constructor(
+    public readonly unit: string,
+    public readonly method?: string
+  ) {}
 
   async createDepositAddress(_quoteId: string, _amount: bigint): Promise<string> {
     return `mock_address_${this.unit}`
@@ -66,6 +69,37 @@ describe('BackendRegistry', () => {
 
       expect(registry.get('btc')).toBe(backend2)
     })
+
+    it('should register method/unit pairs independently', () => {
+      const onchainBackend = new MockBackend('sat', 'onchain')
+      const bolt11Backend = new MockBackend('sat', 'bolt11')
+
+      registry.register(onchainBackend)
+      registry.register(bolt11Backend)
+
+      expect(registry.getByMethod('onchain', 'sat')).toBe(onchainBackend)
+      expect(registry.getByMethod('bolt11', 'sat')).toBe(bolt11Backend)
+      expect(registry.get('sat')).toBe(bolt11Backend)
+    })
+
+    it('should register unit aliases and method aliases', () => {
+      const runesBackend = new MockBackend('unit', 'onchain')
+
+      registry.register(runesBackend, [], ['unit', 'runes'])
+
+      expect(registry.getByMethod('onchain', 'unit')).toBe(runesBackend)
+      expect(registry.getByMethod('unit', 'unit')).toBe(runesBackend)
+      expect(registry.getByMethod('runes', 'unit')).toBe(runesBackend)
+    })
+
+    it('should register BTC as onchain for both btc and sat units', () => {
+      const btcBackend = new MockBackend('btc', 'onchain')
+
+      registry.register(btcBackend, ['sat'])
+
+      expect(registry.getByMethod('onchain', 'btc')).toBe(btcBackend)
+      expect(registry.getByMethod('onchain', 'sat')).toBe(btcBackend)
+    })
   })
 
   describe('get', () => {
@@ -79,6 +113,14 @@ describe('BackendRegistry', () => {
     it('should throw for unregistered unit', () => {
       expect(() => registry.get('unknown')).toThrow('Unsupported unit: unknown')
     })
+
+    it('should throw for unregistered method/unit pairs', () => {
+      registry.register(new MockBackend('unit', 'onchain'))
+
+      expect(() => registry.getByMethod('bolt11', 'unit')).toThrow(
+        'Unsupported method/unit: bolt11/unit'
+      )
+    })
   })
 
   describe('has', () => {
@@ -89,6 +131,14 @@ describe('BackendRegistry', () => {
 
     it('should return false for unregistered unit', () => {
       expect(registry.has('unknown')).toBe(false)
+    })
+
+    it('should check method/unit support', () => {
+      registry.register(new MockBackend('unit', 'onchain'), [], ['unit'])
+
+      expect(registry.hasMethod('onchain', 'unit')).toBe(true)
+      expect(registry.hasMethod('unit', 'unit')).toBe(true)
+      expect(registry.hasMethod('bolt11', 'unit')).toBe(false)
     })
   })
 

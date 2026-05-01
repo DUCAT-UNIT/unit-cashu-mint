@@ -1,6 +1,6 @@
 # Nitro Enclave Dockerfile for Ducat Cashu Mint
 # Builds an EIF (Enclave Image File) containing:
-# - Node.js 20 runtime with compiled TypeScript mint
+# - Node.js 22 runtime with compiled TypeScript mint
 # - Nginx for TLS termination with ACM for Nitro Enclaves
 # - kmstool-enclave-cli for KMS attestation-based secret unsealing
 # - vsock adapters for database/service connectivity
@@ -134,7 +134,7 @@ FROM amazonlinux:2023
 # Install runtime dependencies including Nginx
 # Note: Using --allowerasing to handle libcurl conflicts
 RUN dnf install -y --allowerasing \
-    nodejs20 \
+    nodejs22 \
     npm \
     jq \
     openssl \

@@ -41,6 +41,7 @@ export interface BTCTransactionResult {
   psbt: bitcoin.Psbt
   fee: number
   txSize: number
+  selectedUtxos: BTCUtxo[]
 }
 
 /**
@@ -158,6 +159,7 @@ export class BTCTxBuilder {
       psbt,
       fee: estimatedFee,
       txSize: this.estimateTxSize(selectedUtxos.length, change > 546n ? 2 : 1),
+      selectedUtxos,
     }
   }
 
@@ -166,25 +168,27 @@ export class BTCTxBuilder {
    * @param psbt - The PSBT to sign
    * @param accountIndex - The account index for key derivation
    */
-  signTransaction(psbt: bitcoin.Psbt, accountIndex: number = 0): bitcoin.Psbt {
+  signTransaction(
+    psbt: bitcoin.Psbt,
+    selectedUtxos?: BTCUtxo[],
+    accountIndex: number = 0
+  ): bitcoin.Psbt {
     const seed = Buffer.from(env.MINT_SEED, 'hex')
     const root = bip32.fromSeed(seed, this.network)
 
-    // BIP84 - Native SegWit path
-    const segwitPath = `m/84'/1'/0'/0/${accountIndex}`
-    const segwitChild = root.derivePath(segwitPath)
-
-    // Create a wrapper for the signer
-    const signer = {
-      publicKey: Buffer.from(segwitChild.publicKey),
-      sign: (hash: Buffer) => {
-        const sig = segwitChild.sign(hash)
-        return Buffer.from(sig)
-      },
-    }
-
     // Sign all inputs
     for (let i = 0; i < psbt.data.inputs.length; i++) {
+      const inputAccountIndex = selectedUtxos?.[i]?.accountIndex ?? accountIndex
+      const segwitPath = `m/84'/1'/0'/0/${inputAccountIndex}`
+      const segwitChild = root.derivePath(segwitPath)
+      const signer = {
+        publicKey: Buffer.from(segwitChild.publicKey),
+        sign: (hash: Buffer) => {
+          const sig = segwitChild.sign(hash)
+          return Buffer.from(sig)
+        },
+      }
+
       psbt.signInput(i, signer as any)
     }
 
@@ -198,8 +202,12 @@ export class BTCTxBuilder {
   /**
    * Sign and extract transaction
    */
-  signAndExtract(psbt: bitcoin.Psbt, accountIndex: number = 0): { signedTxHex: string; txid: string } {
-    const signedPsbt = this.signTransaction(psbt, accountIndex)
+  signAndExtract(
+    psbt: bitcoin.Psbt,
+    selectedUtxos?: BTCUtxo[],
+    accountIndex: number = 0
+  ): { signedTxHex: string; txid: string } {
+    const signedPsbt = this.signTransaction(psbt, selectedUtxos, accountIndex)
     const tx = signedPsbt.extractTransaction()
 
     return {

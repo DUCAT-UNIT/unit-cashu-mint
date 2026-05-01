@@ -44,8 +44,8 @@ keys/
 *.key
 
 # Terraform
-terraform/.terraform/
-terraform/.terraform.lock.hcl.backup
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup
-terraform/terraform.tfvars
+**/.terraform/
+**/.terraform.lock.hcl.backup
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/terraform.tfvars

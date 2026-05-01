@@ -220,7 +220,7 @@ describe('DepositMonitor', () => {
 
       // Should only check the valid quote
       expect(mockBackend.checkDeposit).toHaveBeenCalledTimes(1)
-      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('valid1', 'tb1pvalid')
+      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('valid1', 'tb1pvalid', false, 100n)
     })
 
     it('should filter out quotes older than maxAge', async () => {
@@ -265,7 +265,7 @@ describe('DepositMonitor', () => {
 
       // Should only check the recent quote
       expect(mockBackend.checkDeposit).toHaveBeenCalledTimes(1)
-      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('recent1', 'tb1precent')
+      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('recent1', 'tb1precent', false, 100n)
     })
 
     it('should use correct backend for each quote unit', async () => {
@@ -307,8 +307,8 @@ describe('DepositMonitor', () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       // Each backend should have been called for its respective quote
-      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('sat1', 'tb1psat')
-      expect(btcBackend.checkDeposit).toHaveBeenCalledWith('btc1', 'tb1qbtc')
+      expect(mockBackend.checkDeposit).toHaveBeenCalledWith('sat1', 'tb1psat', false, 100n)
+      expect(btcBackend.checkDeposit).toHaveBeenCalledWith('btc1', 'tb1qbtc', false, 100n)
     })
   })
 

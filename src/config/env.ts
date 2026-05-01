@@ -32,10 +32,17 @@ const envSchema = z.object({
   // Multi-unit support
   SUPPORTED_UNITS: z.string().default('unit'), // Comma-separated: 'unit', 'btc', or 'unit,btc'
 
-  // BTC Backend configuration (required if 'btc' in SUPPORTED_UNITS)
+  // BTC Backend configuration (required if 'btc' or 'sat' in SUPPORTED_UNITS)
   MINT_BTC_ADDRESS: z.string().optional(), // P2WPKH address for BTC deposits
   MINT_BTC_PUBKEY: z.string().optional(), // Public key for BTC signing
   BTC_FEE_RATE: z.string().default('5'), // sats/vbyte
+
+  // Optional Lightning backend for standard Cashu bolt11 compatibility
+  LIGHTNING_BACKEND: z.enum(['disabled', 'lnbits']).default('disabled'),
+  LNBITS_URL: z.string().url().optional(),
+  LNBITS_INVOICE_KEY: z.string().optional(),
+  LNBITS_ADMIN_KEY: z.string().optional(),
+  LIGHTNING_FEE_RESERVE: z.string().default('2'), // sats
 
   ENCRYPTION_KEY: z.string().length(64),
   JWT_SECRET: z.string(),
@@ -69,8 +76,17 @@ if (!parsed.success) {
   throw new Error('Invalid environment variables')
 }
 
-// Parse supported units
-const supportedUnits = parsed.data.SUPPORTED_UNITS.split(',').map((u) => u.trim())
+// Parse supported units. "btc" is kept for older Ducat clients; "sat" is the
+// Cashu-preferred Bitcoin minor unit that wallets expect for BTC ecash.
+const configuredSupportedUnits = parsed.data.SUPPORTED_UNITS.split(',')
+  .map((u) => u.trim())
+  .filter(Boolean)
+const supportsLightning = parsed.data.LIGHTNING_BACKEND !== 'disabled'
+const supportsBitcoin =
+  configuredSupportedUnits.includes('btc') || configuredSupportedUnits.includes('sat')
+const supportedUnits = supportsBitcoin || supportsLightning
+  ? Array.from(new Set([...configuredSupportedUnits, 'sat']))
+  : configuredSupportedUnits
 
 // Validate unit-specific configuration
 if (supportedUnits.includes('unit') && !parsed.data.SUPPORTED_RUNES) {
@@ -78,9 +94,16 @@ if (supportedUnits.includes('unit') && !parsed.data.SUPPORTED_RUNES) {
   throw new Error('SUPPORTED_RUNES required for unit')
 }
 
-if (supportedUnits.includes('btc') && !parsed.data.MINT_BTC_ADDRESS) {
-  console.error('❌ MINT_BTC_ADDRESS is required when "btc" unit is enabled')
-  throw new Error('MINT_BTC_ADDRESS required for btc unit')
+if (supportsBitcoin && !parsed.data.MINT_BTC_ADDRESS) {
+  console.error('❌ MINT_BTC_ADDRESS is required when "btc" or "sat" unit is enabled')
+  throw new Error('MINT_BTC_ADDRESS required for bitcoin units')
+}
+
+if (supportsLightning) {
+  if (!parsed.data.LNBITS_URL || !parsed.data.LNBITS_INVOICE_KEY || !parsed.data.LNBITS_ADMIN_KEY) {
+    console.error('❌ LNBITS_URL, LNBITS_INVOICE_KEY, and LNBITS_ADMIN_KEY are required when LIGHTNING_BACKEND=lnbits')
+    throw new Error('LNbits configuration required for lightning')
+  }
 }
 
 export const env = {
@@ -95,7 +118,10 @@ export const env = {
   MINT_CONFIRMATIONS: parseInt(parsed.data.MINT_CONFIRMATIONS),
   MELT_CONFIRMATIONS: parseInt(parsed.data.MELT_CONFIRMATIONS),
   BTC_FEE_RATE: parseInt(parsed.data.BTC_FEE_RATE),
+  LIGHTNING_FEE_RESERVE: parseInt(parsed.data.LIGHTNING_FEE_RESERVE),
   SUPPORTED_UNITS_ARRAY: supportedUnits,
+  SUPPORTS_BITCOIN: supportsBitcoin,
+  SUPPORTS_LIGHTNING: supportsLightning,
   SUPPORTED_RUNES_ARRAY: parsed.data.SUPPORTED_RUNES
     ? parsed.data.SUPPORTED_RUNES.split(',').map((r) => r.trim())
     : [],
