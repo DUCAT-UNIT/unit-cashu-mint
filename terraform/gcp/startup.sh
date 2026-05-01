@@ -62,6 +62,7 @@ fetch_secret() {
 import base64
 import json
 import os
+import shlex
 import urllib.request
 
 project = os.environ["PROJECT_ID"]
@@ -71,7 +72,13 @@ url = f"https://secretmanager.googleapis.com/v1/projects/{project}/secrets/{secr
 request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
 with urllib.request.urlopen(request, timeout=30) as response:
     payload = json.load(response)["payload"]["data"]
-print(base64.b64decode(payload).decode("utf-8"))
+raw = base64.b64decode(payload).decode("utf-8")
+for line in raw.splitlines():
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    print(f"{key}={shlex.quote(value)}")
 PY
 }
 
@@ -101,6 +108,9 @@ deploy_app() {
   cd "$APP_DIR"
   git fetch --all --tags
   git checkout "$REPO_REF"
+  if git rev-parse --verify "origin/$REPO_REF" >/dev/null 2>&1; then
+    git reset --hard "origin/$REPO_REF"
+  fi
   npm ci
   npm run build
 
