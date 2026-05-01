@@ -15,6 +15,19 @@ const DENOMINATIONS = [
   262144, 524288, 1048576, 2097152, 4194304, 8388608,
 ]
 
+export function deriveMintKeysetId(
+  publicKeys: Record<number, string>,
+  unit: string,
+  inputFeePpk = 0,
+  finalExpiry?: number
+): string {
+  return deriveKeysetId(publicKeys, {
+    unit,
+    input_fee_ppk: inputFeePpk,
+    expiry: finalExpiry,
+  })
+}
+
 export class KeyManager {
   private keysetCache = new Map<string, Keyset>()
   private keyEncryptor: KeyEncryptor
@@ -55,9 +68,8 @@ export class KeyManager {
       public_keys[amount] = Buffer.from(publicKey).toString('hex')
     }
 
-    // Derive keyset ID using cashu-ts (take first 14 chars)
-    const fullId = deriveKeysetId(public_keys)
-    const id = fullId.substring(0, 14)
+    const inputFeePpk = 0
+    const id = deriveMintKeysetId(public_keys, unit, inputFeePpk)
 
     // Encrypt private keys before storing
     const encryptedPrivateKeys = await this.encryptKeys(private_keys, id)
@@ -69,7 +81,7 @@ export class KeyManager {
       active: true,
       private_keys: encryptedPrivateKeys,
       public_keys,
-      input_fee_ppk: 0,
+      input_fee_ppk: inputFeePpk,
       created_at: Date.now(),
     }
 

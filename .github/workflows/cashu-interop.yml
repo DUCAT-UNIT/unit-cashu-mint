@@ -60,7 +60,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run migrate
-      - run: npm test -- --run tests/unit/app-info.test.ts tests/unit/services/MeltService.test.ts tests/unit/lightning/FakeLightningBackend.test.ts
+      - run: npm test -- --run tests/unit/app-info.test.ts tests/unit/services/MeltService.test.ts tests/unit/lightning/FakeLightningBackend.test.ts tests/unit/crypto/keysetId.test.ts
 
       - name: Start mint server
         run: |

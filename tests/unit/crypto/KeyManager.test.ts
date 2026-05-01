@@ -20,7 +20,7 @@ describe('KeyManager', () => {
       const keyset = await keyManager.generateKeyset(runeId, unit)
 
       expect(keyset).toBeDefined()
-      expect(keyset.id).toMatch(/^[0-9a-f]{14}$/) // 14 char hex
+      expect(keyset.id).toMatch(/^01[0-9a-f]{64}$/) // NUT-02 v2 keyset ID
       expect(keyset.unit).toBe(unit)
       expect(keyset.rune_id).toBe(runeId)
       expect(keyset.active).toBe(true)
