@@ -39,6 +39,39 @@ export GCP_WORKLOAD_IDENTITY_AUDIENCE="$GCP_WORKLOAD_IDENTITY_AUDIENCE"
 export GCP_ATTESTATION_TOKEN_AUDIENCE="${GCP_ATTESTATION_TOKEN_AUDIENCE:-https://sts.googleapis.com}"
 export CONFIDENTIAL_SPACE_TOKEN_SOCKET="${CONFIDENTIAL_SPACE_TOKEN_SOCKET:-/run/container_launcher/teeserver.sock}"
 
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  : "${DB_HOST:?DATABASE_URL or DB_HOST is required}"
+  : "${DB_PASSWORD:?DB_PASSWORD is required when DATABASE_URL is not set}"
+
+  export DB_USER="${DB_USER:-mintuser}"
+  export DB_PORT="${DB_PORT:-5432}"
+  export DB_NAME="${DB_NAME:-mintdb}"
+  export DB_SSLMODE="${DB_SSLMODE:-disable}"
+  export DATABASE_URL="$(
+    node --input-type=module <<'NODE'
+const user = process.env.DB_USER
+const password = process.env.DB_PASSWORD
+const host = process.env.DB_HOST
+const port = process.env.DB_PORT
+const database = process.env.DB_NAME
+const sslmode = process.env.DB_SSLMODE
+
+if (!user || !password || !host || !port || !database) {
+  throw new Error('DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, and DB_NAME are required')
+}
+
+const url = new URL(`postgresql://${host}:${port}/${database}`)
+url.username = user
+url.password = password
+if (sslmode) {
+  url.searchParams.set('sslmode', sslmode)
+}
+
+console.log(url.toString())
+NODE
+  )"
+fi
+
 log "Running database migrations"
 node dist/scripts/migrate.js
 

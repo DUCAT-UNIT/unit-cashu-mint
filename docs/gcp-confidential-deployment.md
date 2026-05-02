@@ -20,6 +20,9 @@ This module supports two GCP deployment modes:
 - Cloud KMS key for encrypted boot disk and application keyset encryption
 - Cloud KMS key for Secret Manager CMEK
 - IAM wiring for the Secret Manager secret and KMS keys
+- Optional Artifact Registry Docker repository for the workload image
+- Optional private Cloud SQL for PostgreSQL instance for the Confidential Space
+  path
 - In `confidential-vm` mode: startup automation that installs Postgres, Node.js
   22, Caddy, the mint app, migrations, and a systemd service
 - In `confidential-space` mode: a Workload Identity Pool/provider for Google
@@ -78,6 +81,20 @@ MELT_CONFIRMATIONS=1
 CORS_ORIGINS=https://cashu.me
 ```
 
+For `confidential-space`, either include a complete `DATABASE_URL` in the
+Secret Manager payload, or enable `managed_postgres_enabled` and include only
+the database password in the payload:
+
+```dotenv
+DB_PASSWORD=the_same_value_as_terraform_db_password
+```
+
+When `managed_postgres_enabled = true`, Terraform passes only non-secret
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_SSLMODE` metadata to the
+attested container. The password remains in Secret Manager and is fetched only
+after the Confidential Space attestation token can be exchanged through the
+Workload Identity Provider.
+
 On GCP, startup appends the runtime encryption settings below after reading the
 secret in `confidential-vm` mode, so Cloud KMS is authoritative even if the
 secret still contains `KEY_ENCRYPTION_MODE=local` for local development:
@@ -113,22 +130,38 @@ Caddy requests the certificate.
 
 ## Confidential Space Build
 
-Build and push the workload container from the repository root:
+If Docker and gcloud are available locally, build and push the workload
+container from the repository root:
 
 ```bash
-IMAGE="us-docker.pkg.dev/$PROJECT_ID/ducat-mint/mint-server:$(git rev-parse --short HEAD)"
+IMAGE="us-central1-docker.pkg.dev/$PROJECT_ID/ducat-mint/mint-server:$(git rev-parse --short HEAD)"
 docker build -f gcp-confidential-space/Dockerfile -t "$IMAGE" .
 docker push "$IMAGE"
 gcloud artifacts docker images describe "$IMAGE" \
   --format='value(image_summary.digest)'
 ```
 
+On a machine without Docker or gcloud, use Cloud Build through Application
+Default Credentials:
+
+```bash
+node scripts/gcp-confidential-space-build.mjs \
+  --project "$PROJECT_ID" \
+  --location us-central1 \
+  --repository ducat-mint \
+  --image mint-server
+```
+
+The helper creates the Artifact Registry repository and a Cloud Storage source
+bucket when they do not exist, submits the Docker build to Cloud Build, and
+prints the pinned image reference and digest.
+
 Set these in `terraform.tfvars`:
 
 ```hcl
 deployment_mode = "confidential-space"
 
-confidential_space_image_reference = "us-docker.pkg.dev/PROJECT_ID/ducat-mint/mint-server@sha256:..."
+confidential_space_image_reference = "us-central1-docker.pkg.dev/PROJECT_ID/ducat-mint/mint-server@sha256:..."
 confidential_space_image_digest    = "sha256:..."
 confidential_space_image_family    = "confidential-space"
 ```
@@ -136,6 +169,20 @@ confidential_space_image_family    = "confidential-space"
 The digest is part of the Workload Identity Provider attestation condition and
 the KMS/Secret Manager IAM principalSet. A new container digest intentionally
 requires a Terraform update before the new workload can decrypt.
+
+For the fully managed database path, also set:
+
+```hcl
+managed_postgres_enabled = true
+db_name                  = "mintdb"
+db_user                  = "mintuser"
+db_password              = "the_same_value_present_as_DB_PASSWORD_in_mint_env"
+```
+
+Cloud SQL is private-IP only and encrypted with the module KMS key. The VM
+service account is not granted Secret Manager or app-level KMS decrypt access
+in `confidential-space` mode; the federated principal bound to the attested
+container digest is.
 
 ## Verify
 

@@ -180,10 +180,87 @@ variable "confidential_space_enable_caddy" {
   default     = true
 }
 
+variable "artifact_registry_location" {
+  description = "Artifact Registry location for the Confidential Space container. Defaults to region when empty."
+  type        = string
+  default     = ""
+}
+
+variable "artifact_registry_repository_id" {
+  description = "Artifact Registry Docker repository ID for the mint container."
+  type        = string
+  default     = "ducat-mint"
+}
+
+variable "artifact_registry_image_name" {
+  description = "Artifact Registry image name for the mint container."
+  type        = string
+  default     = "mint-server"
+}
+
+variable "create_artifact_registry_repository" {
+  description = "Create the Artifact Registry Docker repository from this module. Disable if the repository already exists."
+  type        = bool
+  default     = false
+}
+
+variable "managed_postgres_enabled" {
+  description = "Create a private Cloud SQL for PostgreSQL instance for Confidential Space mode."
+  type        = bool
+  default     = false
+}
+
+variable "managed_postgres_database_version" {
+  description = "Cloud SQL PostgreSQL database version."
+  type        = string
+  default     = "POSTGRES_16"
+}
+
+variable "managed_postgres_tier" {
+  description = "Cloud SQL machine tier."
+  type        = string
+  default     = "db-custom-1-3840"
+}
+
+variable "managed_postgres_disk_size_gb" {
+  description = "Cloud SQL disk size in GB."
+  type        = number
+  default     = 20
+}
+
+variable "managed_postgres_deletion_protection" {
+  description = "Enable deletion protection on the managed Cloud SQL instance."
+  type        = bool
+  default     = true
+}
+
+variable "db_name" {
+  description = "Mint PostgreSQL database name."
+  type        = string
+  default     = "mintdb"
+}
+
+variable "db_user" {
+  description = "Mint PostgreSQL database user."
+  type        = string
+  default     = "mintuser"
+}
+
+variable "db_sslmode" {
+  description = "PostgreSQL sslmode used by the Confidential Space workload when DATABASE_URL is derived from DB_* values."
+  type        = string
+  default     = "disable"
+}
+
 locals {
   name_prefix            = "ducat-mint-${var.environment}"
   use_confidential_space = var.deployment_mode == "confidential-space"
   use_confidential_vm    = var.deployment_mode == "confidential-vm"
+  artifact_registry_location = (
+    var.artifact_registry_location != ""
+    ? var.artifact_registry_location
+    : var.region
+  )
   confidential_space_pool_id = (
     var.confidential_space_workload_identity_pool_id != ""
     ? var.confidential_space_workload_identity_pool_id
@@ -199,7 +276,7 @@ locals {
     var.confidential_space_require_stable_image ? "'STABLE' in assertion.submods.confidential_space.support_attributes" : "",
     var.confidential_space_require_production_image ? "assertion.dbgstat == 'disabled-since-boot'" : "",
   ])
-  confidential_space_metadata = {
+  confidential_space_base_metadata = {
     "tee-image-reference"                    = var.confidential_space_image_reference
     "tee-restart-policy"                     = "Always"
     "tee-container-log-redirect"             = var.confidential_space_log_redirect
@@ -212,6 +289,17 @@ locals {
     "tee-env-TLS_EMAIL"                      = var.tls_email
     "tee-env-CADDY_ENABLED"                  = tostring(var.confidential_space_enable_caddy)
   }
+  confidential_space_managed_postgres_metadata = var.managed_postgres_enabled ? {
+    "tee-env-DB_HOST"    = google_sql_database_instance.mint[0].private_ip_address
+    "tee-env-DB_PORT"    = "5432"
+    "tee-env-DB_NAME"    = var.db_name
+    "tee-env-DB_USER"    = var.db_user
+    "tee-env-DB_SSLMODE" = var.db_sslmode
+  } : {}
+  confidential_space_metadata = merge(
+    local.confidential_space_base_metadata,
+    local.confidential_space_managed_postgres_metadata
+  )
   labels = {
     app         = "ducat-mint"
     environment = var.environment
@@ -234,6 +322,78 @@ resource "google_compute_subnetwork" "mint" {
 resource "google_compute_address" "mint" {
   name   = "${local.name_prefix}-ip"
   region = var.region
+}
+
+resource "google_artifact_registry_repository" "mint" {
+  count         = var.create_artifact_registry_repository ? 1 : 0
+  location      = local.artifact_registry_location
+  repository_id = var.artifact_registry_repository_id
+  description   = "Ducat mint Confidential Space workload images"
+  format        = "DOCKER"
+  labels        = local.labels
+}
+
+resource "google_compute_global_address" "private_services" {
+  count         = var.managed_postgres_enabled ? 1 : 0
+  name          = "${local.name_prefix}-private-services"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.mint.id
+}
+
+resource "google_service_networking_connection" "private_vpc" {
+  count                   = var.managed_postgres_enabled ? 1 : 0
+  network                 = google_compute_network.mint.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_services[0].name]
+}
+
+resource "google_sql_database_instance" "mint" {
+  count               = var.managed_postgres_enabled ? 1 : 0
+  name                = "${local.name_prefix}-postgres"
+  database_version    = var.managed_postgres_database_version
+  region              = var.region
+  deletion_protection = var.managed_postgres_deletion_protection
+  encryption_key_name = google_kms_crypto_key.mint.id
+
+  settings {
+    tier              = var.managed_postgres_tier
+    availability_type = "ZONAL"
+    disk_autoresize   = true
+    disk_size         = var.managed_postgres_disk_size_gb
+    disk_type         = "PD_SSD"
+
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = true
+    }
+
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.mint.id
+    }
+
+    user_labels = local.labels
+  }
+
+  depends_on = [
+    google_kms_crypto_key_iam_member.cloud_sql_cmek,
+    google_service_networking_connection.private_vpc,
+  ]
+}
+
+resource "google_sql_database" "mint" {
+  count    = var.managed_postgres_enabled ? 1 : 0
+  name     = var.db_name
+  instance = google_sql_database_instance.mint[0].name
+}
+
+resource "google_sql_user" "mint" {
+  count    = var.managed_postgres_enabled ? 1 : 0
+  name     = var.db_user
+  instance = google_sql_database_instance.mint[0].name
+  password = var.db_password
 }
 
 resource "google_compute_firewall" "https" {
@@ -300,6 +460,13 @@ resource "google_project_service_identity" "secret_manager" {
   service  = "secretmanager.googleapis.com"
 }
 
+resource "google_project_service_identity" "cloud_sql" {
+  count    = var.managed_postgres_enabled ? 1 : 0
+  provider = google-beta
+  project  = var.project_id
+  service  = "sqladmin.googleapis.com"
+}
+
 resource "google_secret_manager_secret_iam_member" "mint_env_accessor" {
   count     = local.use_confidential_vm ? 1 : 0
   secret_id = data.google_secret_manager_secret.mint_env.id
@@ -318,6 +485,13 @@ resource "google_kms_crypto_key_iam_member" "secret_manager_cmek" {
   crypto_key_id = google_kms_crypto_key.secret_manager.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = google_project_service_identity.secret_manager.member
+}
+
+resource "google_kms_crypto_key_iam_member" "cloud_sql_cmek" {
+  count         = var.managed_postgres_enabled ? 1 : 0
+  crypto_key_id = google_kms_crypto_key.mint.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = google_project_service_identity.cloud_sql[0].member
 }
 
 resource "google_kms_crypto_key_iam_member" "compute_engine_encrypter_decrypter" {
@@ -529,6 +703,8 @@ resource "google_compute_instance" "confidential_space" {
     google_secret_manager_secret_iam_member.confidential_space_mint_env_accessor,
     google_project_iam_member.artifact_registry_reader,
     google_project_iam_member.confidential_space_log_writer,
+    google_sql_database.mint,
+    google_sql_user.mint,
   ]
 }
 
@@ -574,6 +750,16 @@ output "confidential_space_workload_identity_audience" {
 output "confidential_space_expected_image_digest" {
   description = "Container digest that is allowed to decrypt with KMS in Confidential Space mode."
   value       = var.confidential_space_image_digest
+}
+
+output "artifact_registry_repository" {
+  description = "Artifact Registry Docker repository name used for Confidential Space images."
+  value       = "${local.artifact_registry_location}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository_id}"
+}
+
+output "managed_postgres_private_ip" {
+  description = "Private Cloud SQL address used by Confidential Space when managed_postgres_enabled=true."
+  value       = var.managed_postgres_enabled ? google_sql_database_instance.mint[0].private_ip_address : null
 }
 
 output "secret_manager_cmek_key_name" {

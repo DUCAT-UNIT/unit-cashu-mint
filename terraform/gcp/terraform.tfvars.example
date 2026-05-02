@@ -18,9 +18,29 @@ deployment_mode = "confidential-vm"
 
 # Required only when deployment_mode = "confidential-space".
 # Build and push gcp-confidential-space/Dockerfile, then pin the image by digest.
-confidential_space_image_reference = "us-docker.pkg.dev/your-gcp-project-id/ducat-mint/mint-server@sha256:..."
+confidential_space_image_reference = "us-central1-docker.pkg.dev/your-gcp-project-id/ducat-mint/mint-server@sha256:..."
 confidential_space_image_digest    = "sha256:..."
 confidential_space_image_family    = "confidential-space"
+
+# Optional: create the Docker repository from Terraform. If you create it with
+# the build helper or manually, leave this false.
+create_artifact_registry_repository = false
+artifact_registry_location          = "us-central1"
+artifact_registry_repository_id     = "ducat-mint"
+artifact_registry_image_name        = "mint-server"
+
+# Optional but recommended for confidential-space: create a private Cloud SQL
+# PostgreSQL instance and pass only non-secret DB connection metadata to the
+# attested container. Put the same db_password value in the Secret Manager
+# mint env payload as DB_PASSWORD.
+managed_postgres_enabled             = false
+managed_postgres_database_version    = "POSTGRES_16"
+managed_postgres_tier                = "db-custom-1-3840"
+managed_postgres_disk_size_gb        = 20
+managed_postgres_deletion_protection = true
+db_name                              = "mintdb"
+db_user                              = "mintuser"
+db_sslmode                           = "disable"
 
 # N2D uses AMD SEV. For stronger hardware-backed attestation, choose a zone and
 # machine family that supports SEV_SNP or TDX and set confidential_instance_type.
