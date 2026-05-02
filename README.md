@@ -1,142 +1,125 @@
 # Ducat Mint Server
 
-A Cashu ecash mint backed by Bitcoin and Bitcoin Runes, deployed on GCP
-Confidential Space.
+Cashu ecash mint for BTC and UNIT Runes, deployed through GCP Confidential
+Space.
 
-**Property the Confidential Space deployment gives you:** mint secrets and
-Cloud KMS decrypt capability are only available to the pinned, attested
-container image. The VM service account does not have direct access to the
-mint Secret Manager payload or app-level Cloud KMS key.
+The security target is simple: mint secrets and app-level Cloud KMS decrypt
+capability are available only to the pinned, attested container image. The VM
+service account should not directly read the Secret Manager payload or decrypt
+app key material.
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-22.4+-green?logo=node.js)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+## What Runs
 
----
+- Fastify/TypeScript Cashu mint.
+- BTC on-chain ecash as `onchain` / `sat`.
+- UNIT Runes ecash as `onchain` / `unit`.
+- Optional Lightning as `bolt11` / `sat` through LNbits.
+- Private Cloud SQL for mint state.
+- Secret Manager plus app-level Cloud KMS for runtime secrets and keyset
+  encryption.
 
-## What This Is
+## Deploys From Main
 
-- **Cashu protocol** - full NUT-00 through NUT-11 plus supported quote
-  signatures and payment-method extensions.
-- **Multi-method / multi-unit** - BTC on-chain (`onchain`/`sat`), UNIT Runes
-  (`onchain`/`unit`), and optional Lightning (`bolt11`/`sat` via LNbits)
-  behind a single mint.
-- **GCP Confidential Space deployment** - the production path runs the mint as
-  an attested container with image-digest-bound Secret Manager and Cloud KMS
-  access.
-- **Cloud KMS keyset encryption** - newly written mint keyset private keys are
-  encrypted through Cloud KMS in GCP modes.
+`main` pushes always run CI.
 
-[UNIT](https://docs.ducatprotocol.com/unit/philosophy) is a Bitcoin-backed CDP
-stablecoin. This mint enables privacy-preserving transfers of UNIT tokens using
-Cashu blind signatures.
+Deploy-relevant `main` pushes also run
+`.github/workflows/gcp-confidential-space-release.yml`. Relevant paths include
+`src/**`, `migrations/**`, `terraform/gcp/**`, `gcp-confidential-space/**`,
+package files, and the release workflow itself.
 
-## Architecture At A Glance
+When release preflight is configured, the workflow:
 
-```text
-Internet :443
-    |
-    v
-GCP Confidential Space VM
-    |
-    |-- Caddy :443              TLS for the mint endpoint
-    |-- Node.js :3338           Fastify Cashu mint
-    |-- Secret Manager fetch    allowed only after attestation
-    |-- Cloud KMS encrypt/decrypt
-    |                           allowed only to the expected image digest
-    |
-    v
-Private Cloud SQL PostgreSQL
+1. Builds the Confidential Space workload image.
+2. Attests the image digest.
+3. Applies Terraform with the pinned digest.
+4. Restarts the Confidential Space VM.
+5. Health-checks the mint.
+6. Generates and signs the deployment security attestation.
+7. Uploads the attestation JSON, markdown summary, and checksum.
+
+If required GitHub environment variables or secrets are missing, preflight skips
+deployment without touching GCP.
+
+## Where The Attestation Is
+
+To find the evidence that CI did not reveal KMS keys or read secrets:
+
+1. Open GitHub Actions for this repo.
+2. Open the successful **GCP Confidential Space Release** run for the deployed
+   commit.
+3. Open the run summary and artifact list.
+4. Download artifact `gcp-confidential-space-deployment-attestation`.
+5. Inspect:
+   - `gcp-confidential-space-deployment-attestation.md`
+   - `gcp-confidential-space-deployment-attestation.json`
+   - `gcp-confidential-space-deployment-attestation.json.sha256`
+
+The markdown summary has a **Key Handling Claims** section. The JSON has the
+same evidence under `claims`. The important claims are:
+
+```json
+{
+  "verifierDidNotReadSecretPayloads": true,
+  "verifierDidNotRequestKmsDecrypt": true,
+  "verifierDidNotRequestKmsEncrypt": true,
+  "kmsKeyMaterialWasNotExportedToCi": true,
+  "appKmsAccessIsBoundToAttestedImageDigest": true,
+  "secretManagerAccessIsBoundToAttestedImageDigest": true,
+  "runtimeServiceAccountHasNoDirectAppKmsAccess": true,
+  "runtimeServiceAccountHasNoDirectSecretAccess": true
+}
 ```
 
-Terraform binds Secret Manager access and app-level Cloud KMS encrypt/decrypt
-to a Workload Identity Federation principal scoped to the expected Confidential
-Space image digest. The VM runtime service account can launch the workload, but
-it cannot directly read the mint secret or decrypt app key material.
+Also check:
 
-## Where To Read Next
+- `result` is `pass`;
+- `subject.imageDigest` matches the deployed image digest;
+- the SHA-256 file matches the downloaded JSON;
+- the workflow step **Attest deployment security predicate** completed
+  successfully.
 
-- **Security model:** [`docs/security.md`](./docs/security.md)
-- **GCP deployment:** [`docs/gcp-confidential-deployment.md`](./docs/gcp-confidential-deployment.md)
-- **Private operations evidence:** [`docs/private-operations.md`](./docs/private-operations.md)
-- **Local development:** [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-- **Historical notes:** [`docs/archive/`](./docs/archive/)
+Private release evidence should keep the full attestation artifact, checksum,
+audit review notes, and operator review record. Do not commit secret payloads,
+database URLs, admin bearer tokens, service account keys, or raw audit exports.
 
-## Quick Start
+## Local Development
 
 ```bash
-git clone <repo> && cd mint-server
 npm install
 cp .env.example .env
 docker-compose up -d
+npm run migrate
 npm run dev
+```
+
+Useful checks:
+
+```bash
+npm run lint
+npm run build
 npm test
 ```
 
-Full dev loop and conventions are in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+Manual diagnostics live in `scripts/dev/`. They are not part of CI, deploy, or
+release evidence.
 
-## Live Dev Mint
-
-- **Endpoint:** https://dev-cashu-mint.ducatprotocol.com
-- **GCP project:** `ducat-dev`
-- **Deployment mode:** Confidential Space
-
-The release workflow builds a new container image, deploys that pinned digest
-through Terraform, restarts the Confidential Space VM, verifies live GCP state,
-and signs a deployment security attestation for the same digest.
-
-## Project Layout
+## Repo Map
 
 ```text
-src/                     mint application (TypeScript, Fastify)
-gcp-confidential-space/  Confidential Space container entrypoint and Caddy config
-terraform/gcp/           GCP Confidential VM and Confidential Space infrastructure
-scripts/                 dev, build, deploy, and attestation helpers
-docs/                    security, deployment, private evidence, and archived notes
-tests/                   unit, integration, and compatibility coverage
+src/                     mint application
+migrations/              SQL migrations used by npm run migrate
+gcp-confidential-space/  Confidential Space container files
+terraform/gcp/           GCP infrastructure
+scripts/interop/         wallet compatibility flows
+scripts/dev/             manual diagnostics and one-off helpers
+docs/                    detailed security and deployment notes
+tests/                   unit and integration tests
 ```
 
-## Cashu Protocol Coverage
+## Detailed Docs
 
-| NUT | Feature |
-|---|---|
-| 00 | Cryptography (BDHKE) |
-| 01 | Mint public keys |
-| 02 | Keysets and fees |
-| 03 | Swap tokens |
-| 04 | Mint tokens |
-| 05 | Melt tokens |
-| 06 | Mint info |
-| 07 | Token state check |
-| 08 | Lightning fees |
-| 09 | Restore signatures |
-| 10 | Spending conditions (P2PK) |
-| 11 | Pay-to-Pubkey (multisig, timelocks) |
-| 20 | Signature on mint quote |
-| 23 | BOLT11 Lightning method |
-| 26 | Draft on-chain BTC method |
-
-## Security Model
-
-The key security claim is tied to the GCP release path:
-
-1. GitHub Actions builds a container image and records the digest.
-2. Terraform grants Secret Manager and Cloud KMS access only to a Confidential
-   Space attestation principal for that exact digest.
-3. The verifier checks live GCP state, including the VM, Workload Identity
-   provider condition, Secret Manager IAM, Cloud KMS IAM, private Cloud SQL,
-   and audit monitoring resources.
-4. The workflow signs a deployment attestation predicate for the digest it
-   actually deployed and verified.
-
-Full trust model, update flow, audit monitoring, and known gaps are in
-[`docs/security.md`](./docs/security.md).
-
-The repo documents the public process and non-sensitive release summaries. Full
-deployment evidence, including attestation JSON, checksums, audit review notes,
-and operator records, is kept in the private operations archive described in
-[`docs/private-operations.md`](./docs/private-operations.md).
-
-## License
-
-MIT - see [LICENSE](./LICENSE).
+- `docs/security.md`
+- `docs/gcp-confidential-deployment.md`
+- `docs/release-evidence.md`
+- `docs/private-operations.md`
+- `docs/archive/` for historical notes only
