@@ -1,6 +1,6 @@
-import { testConnection, closePool } from '../src/database/db.js'
-import { KeysetRepository, QuoteRepository, ProofRepository } from '../src/database/repositories/index.js'
-import { logger } from '../src/utils/logger.js'
+import { testConnection, closePool } from '../../src/database/db.js'
+import { KeysetRepository, QuoteRepository, ProofRepository } from '../../src/database/repositories/index.js'
+import { logger } from '../../src/utils/logger.js'
 
 async function testDatabase() {
   try {

@@ -3,8 +3,8 @@
  * Debug UNIT Deposit
  */
 
-import { OrdClient, EsploraClient } from '../src/runes/api-client.js'
-import { env } from '../src/config/env.js'
+import { OrdClient, EsploraClient } from '../../src/runes/api-client.js'
+import { env } from '../../src/config/env.js'
 
 const TXID = '36231ef0dd5558db8888362b5668026657f50559292e6f4667d96c32d0840606'
 const VOUT = 1

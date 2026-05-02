@@ -57,10 +57,10 @@ it cannot directly read the mint secret or decrypt app key material.
 ## Where To Read Next
 
 - **Security model:** [`docs/security.md`](./docs/security.md)
-- **Architecture:** [`docs/architecture.md`](./docs/architecture.md)
 - **GCP deployment:** [`docs/gcp-confidential-deployment.md`](./docs/gcp-confidential-deployment.md)
+- **Private operations evidence:** [`docs/private-operations.md`](./docs/private-operations.md)
 - **Local development:** [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-- **Runes integration:** [`docs/runes-integration.md`](./docs/runes-integration.md)
+- **Historical notes:** [`docs/archive/`](./docs/archive/)
 
 ## Quick Start
 
@@ -92,7 +92,7 @@ src/                     mint application (TypeScript, Fastify)
 gcp-confidential-space/  Confidential Space container entrypoint and Caddy config
 terraform/gcp/           GCP Confidential VM and Confidential Space infrastructure
 scripts/                 dev, build, deploy, and attestation helpers
-docs/                    architecture, security, and deployment docs
+docs/                    security, deployment, private evidence, and archived notes
 tests/                   unit, integration, and compatibility coverage
 ```
 
@@ -131,6 +131,11 @@ The key security claim is tied to the GCP release path:
 
 Full trust model, update flow, audit monitoring, and known gaps are in
 [`docs/security.md`](./docs/security.md).
+
+The repo documents the public process and non-sensitive release summaries. Full
+deployment evidence, including attestation JSON, checksums, audit review notes,
+and operator records, is kept in the private operations archive described in
+[`docs/private-operations.md`](./docs/private-operations.md).
 
 ## License
 

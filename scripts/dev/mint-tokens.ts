@@ -12,7 +12,7 @@ const MINT_URL = process.env.MINT_URL || 'http://localhost:3000'
 const QUOTE_ID = process.env.QUOTE_ID
 
 if (!QUOTE_ID) {
-  console.error('Usage: QUOTE_ID=<quote_id> npx tsx scripts/mint-tokens.ts')
+  console.error('Usage: QUOTE_ID=<quote_id> npx tsx scripts/dev/mint-tokens.ts')
   process.exit(1)
 }
 

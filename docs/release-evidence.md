@@ -74,6 +74,12 @@ secrets to CI:
 CI receives resource names and IAM metadata. It does not read the Secret Manager
 payload and does not call Cloud KMS encrypt or decrypt.
 
+The release workflow uploads the deployment attestation JSON, markdown summary,
+and checksum as workflow artifacts. The public repo records non-sensitive run
+links and posture summaries; maintainers keep the full attestation artifact,
+checksum, audit review notes, and operator review record in the private
+operations archive described in [`private-operations.md`](./private-operations.md).
+
 ## Auditability
 
 Audit monitoring is enabled for the dev project:

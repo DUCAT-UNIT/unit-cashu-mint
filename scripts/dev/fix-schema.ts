@@ -1,5 +1,5 @@
-import { query, closePool } from '../src/database/db.js'
-import { logger } from '../src/utils/logger.js'
+import { query, closePool } from '../../src/database/db.js'
+import { logger } from '../../src/utils/logger.js'
 
 async function fixSchema() {
   try {

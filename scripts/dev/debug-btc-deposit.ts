@@ -3,7 +3,7 @@
  * Debug BTC Deposit Check
  */
 
-import { EsploraClient } from '../src/runes/api-client.js'
+import { EsploraClient } from '../../src/runes/api-client.js'
 
 const MINT_ADDRESS = 'tb1q0ymavqheqw5ktk9k6l43an3njhcym8khmjlw36'
 const MIN_CONFIRMATIONS = 1

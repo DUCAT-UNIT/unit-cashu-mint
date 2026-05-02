@@ -30,6 +30,24 @@ This module supports two GCP deployment modes:
   Cloud Attestation, principalSet IAM bindings scoped to the expected image
   digest, and a Confidential Space VM that launches the attested container
 
+## Automatic Main Releases
+
+Deploy-relevant pushes to `main` trigger
+`.github/workflows/gcp-confidential-space-release.yml`. The path filter includes
+application source, migrations, Terraform, Confidential Space container files,
+package files, and the release workflow itself.
+
+The release job first runs preflight. If required GitHub environment variables
+or secrets are missing, it records the missing configuration and exits without
+touching GCP. When configured, the job builds the workload image, deploys the
+pinned digest through Terraform, restarts the Confidential Space VM, checks
+public health, generates the deployment security attestation, signs the
+attestation predicate, and uploads the attestation artifacts.
+
+The ordinary `CI` workflow also runs on every push to `main`, including
+documentation-only pushes. Documentation-only pushes do not trigger the GCP
+release workflow unless they touch one of the deploy-relevant paths.
+
 ## Bootstrap
 
 ```bash

@@ -5,7 +5,7 @@
  * This script tests the full mint/melt flow against a running server
  * with real or simulated deposits.
  *
- * Usage: npx tsx scripts/e2e-test.ts
+ * Usage: npx tsx scripts/dev/e2e-test.ts
  */
 
 import { randomBytes, createHash } from 'crypto'
@@ -211,7 +211,7 @@ async function main() {
     console.log(`      ${mintQuote.request}`)
     console.log('   2. Wait for confirmation (~30 seconds after block)')
     console.log('   3. Run this script again with QUOTE_ID env var:')
-    console.log(`      QUOTE_ID=${mintQuote.quote} npx tsx scripts/e2e-test.ts`)
+    console.log(`      QUOTE_ID=${mintQuote.quote} npx tsx scripts/dev/e2e-test.ts`)
     console.log('')
 
     // Poll for a bit

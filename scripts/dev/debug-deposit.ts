@@ -1,6 +1,6 @@
-import { OrdClient } from '../src/runes/api-client.js'
-import { EsploraClient } from '../src/runes/api-client.js'
-import { env } from '../src/config/env.js'
+import { OrdClient } from '../../src/runes/api-client.js'
+import { EsploraClient } from '../../src/runes/api-client.js'
+import { env } from '../../src/config/env.js'
 
 async function debug() {
   const ordClient = new OrdClient(env.ORD_URL)

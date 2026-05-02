@@ -71,6 +71,12 @@ The verifier does not read the Secret Manager payload and does not call Cloud
 KMS encrypt/decrypt. It validates the live resource configuration that decides
 which workload can access those resources.
 
+Deployment attestation artifacts are uploaded by the release workflow and
+tracked in the private operations archive. The public repo should describe what
+was checked and link to non-sensitive workflow runs; it should not publish
+Secret Manager payloads, database URLs, admin bearer tokens, service account
+keys, or raw audit log exports.
+
 ## What The Deployment Attestation Proves
 
 The generated deployment predicate records evidence that:
