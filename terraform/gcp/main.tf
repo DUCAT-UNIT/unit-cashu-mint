@@ -324,6 +324,12 @@ variable "audit_data_access_logs_enabled" {
   default     = false
 }
 
+variable "audit_monitor_reader_service_account_email" {
+  description = "Optional service account email that is allowed to read Cloud Logging entries for the audit monitor workflow."
+  type        = string
+  default     = ""
+}
+
 locals {
   name_prefix            = "ducat-mint-${var.environment}"
   use_confidential_space = var.deployment_mode == "confidential-space"
@@ -586,6 +592,13 @@ resource "google_monitoring_alert_policy" "security_admin_activity" {
   }
 
   depends_on = [google_project_service.required]
+}
+
+resource "google_project_iam_member" "audit_monitor_log_reader" {
+  count   = var.audit_monitoring_enabled && var.audit_monitor_reader_service_account_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/logging.viewer"
+  member  = "serviceAccount:${var.audit_monitor_reader_service_account_email}"
 }
 
 resource "google_compute_network" "mint" {

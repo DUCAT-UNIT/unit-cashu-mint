@@ -121,6 +121,12 @@ Logs for sensitive admin changes. The monitor allows the configured deploy
 service account and fails on unexpected principals, which turns the release-time
 attestation into an ongoing tamper-evidence check.
 
+Terraform grants the monitor service account Cloud Logging read access when
+`audit_monitor_reader_service_account_email` is configured. That permission is
+limited to audit review and is separate from runtime secret/KMS access; the VM
+service account still does not receive direct Secret Manager accessor or
+app-level KMS decrypt permissions.
+
 Data Access logs for Cloud KMS and Secret Manager provide stronger evidence of
 later key and secret access, not only policy changes. The dev deployment keeps
 these logs enabled through `audit_data_access_logs_enabled=true`; the release

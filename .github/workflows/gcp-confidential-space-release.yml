@@ -96,6 +96,7 @@ env:
   TF_VAR_audit_log_retention_days: ${{ vars.GCP_AUDIT_LOG_RETENTION_DAYS || '365' }}
   TF_VAR_audit_log_archive_retention_locked: ${{ vars.GCP_AUDIT_LOG_ARCHIVE_RETENTION_LOCKED || 'false' }}
   TF_VAR_audit_data_access_logs_enabled: ${{ vars.GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED || 'false' }}
+  TF_VAR_audit_monitor_reader_service_account_email: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
 jobs:
   preflight:

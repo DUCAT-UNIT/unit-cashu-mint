@@ -51,6 +51,7 @@ env:
   TF_VAR_audit_monitoring_enabled: ${{ vars.GCP_AUDIT_MONITORING_ENABLED || 'true' }}
   TF_VAR_audit_log_archive_bucket_name: ${{ vars.GCP_AUDIT_LOG_ARCHIVE_BUCKET_NAME || '' }}
   TF_VAR_audit_data_access_logs_enabled: ${{ vars.GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED || 'false' }}
+  TF_VAR_audit_monitor_reader_service_account_email: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
   TF_VAR_confidential_space_caddy_acme_storage_enabled: ${{ vars.GCP_CADDY_ACME_STORAGE_ENABLED || 'true' }}
   TF_VAR_confidential_space_caddy_acme_secret_id: ${{ vars.GCP_CADDY_ACME_SECRET_ID || '' }}
 

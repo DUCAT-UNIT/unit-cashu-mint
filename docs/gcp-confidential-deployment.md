@@ -259,7 +259,11 @@ Optional variables include `GCP_REGION`, `GCP_ZONE`,
 `GCP_AUDIT_LOG_ARCHIVE_RETENTION_LOCKED`, and
 `GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED`, `GCP_CADDY_ACME_STORAGE_ENABLED`,
 `GCP_CADDY_ACME_SECRET_ID`, `GCP_CADDY_ACME_SYNC_INTERVAL_SECONDS`, and
-`GCP_CADDY_ACME_MAX_BYTES`.
+`GCP_CADDY_ACME_MAX_BYTES`. The release workflow passes
+`GCP_DEPLOY_SERVICE_ACCOUNT` into Terraform as
+`audit_monitor_reader_service_account_email` so the scheduled audit monitor can
+read Cloud Audit Logs without granting broad access to the runtime VM service
+account.
 
 The CI deploy expects Terraform state in a GCS backend. For the already-running
 dev deployment, migrate the local state into the configured state bucket before
@@ -302,6 +306,13 @@ changes. The configured deploy service account is allowed; unexpected
 principals fail the workflow and leave a JSON/markdown evidence artifact for
 review.
 
+Terraform grants that workflow service account `roles/logging.viewer` only when
+`audit_monitoring_enabled = true` and
+`audit_monitor_reader_service_account_email` is set. This permission is for
+reading Cloud Logging entries during audit checks; it is separate from the
+attested runtime service account and does not grant Secret Manager payload or
+Cloud KMS decrypt access.
+
 Use `GCP_AUDIT_ALLOWED_PRINCIPALS` as a comma-separated allowlist for approved
 break-glass operators whose sensitive admin activity should be recorded but not
 fail the scheduled monitor.
@@ -338,14 +349,14 @@ Expected compatibility signal in `/v1/info`:
   "nuts": {
     "4": {
       "methods": [
-        { "method": "unit", "unit": "unit" },
+        { "method": "onchain", "unit": "unit" },
         { "method": "onchain", "unit": "sat" },
         { "method": "bolt11", "unit": "sat" }
       ]
     },
     "5": {
       "methods": [
-        { "method": "unit", "unit": "unit" },
+        { "method": "onchain", "unit": "unit" },
         { "method": "onchain", "unit": "sat" },
         { "method": "bolt11", "unit": "sat" }
       ]
