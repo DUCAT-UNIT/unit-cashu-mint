@@ -1,5 +1,9 @@
 # Runes Integration Summary
 
+Status: this is an implementation note for the Runes/UNIT backend. The current
+release evidence and maintainer-facing deployment status live in
+[`release-evidence.md`](./release-evidence.md).
+
 ## Overview
 
 This document summarizes the Runes integration implementation for the Cashu mint server. The integration enables the mint to handle Bitcoin Runes deposits and withdrawals, providing the backend infrastructure for minting and melting ecash tokens backed by DUCAT•UNIT•RUNE.
@@ -162,8 +166,8 @@ Updated with:
    → RunesBackend.sendRunes()
      → UtxoSelector.findUtxosForRunesTransfer()
      → PsbtBuilder.buildRunesPsbt()
-     → [TODO: Sign PSBT]
-     → [TODO: Broadcast transaction]
+     → WalletKeyManager signs the PSBT
+     → Esplora broadcasts the transaction
    ← Returns: { state: "PAID", txid }
 ```
 

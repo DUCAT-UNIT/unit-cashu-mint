@@ -719,9 +719,9 @@ All endpoints follow cashu-ts patterns exactly.
 {
   keysets: {
     "00abc123def456": {  // Keyset ID
-      "1": "02a1b2c3...",
-      "2": "02d4e5f6...",
-      "4": "02g7h8i9...",
+      "1": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "2": "02c6047f9441ed7d6d3045406e95c07cd85a09fdf8217e0f1f9310c9309d3a2a7c",
+      "4": "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bcffc7",
       // ... powers of 2
     }
   }

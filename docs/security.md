@@ -97,9 +97,14 @@ Cloud Monitoring alert policy for sensitive admin activity. This makes later
 IAM, Workload Identity, Cloud KMS, Secret Manager, VM, and Cloud SQL changes
 observable.
 
-Enable Data Access logs for stronger evidence of later Cloud KMS and Secret
-Manager access. This increases log volume, so it is controlled separately from
-admin activity monitoring.
+Data Access logs for Cloud KMS and Secret Manager provide stronger evidence of
+later key and secret access, not only policy changes. The dev deployment keeps
+these logs enabled through `audit_data_access_logs_enabled=true`; the release
+verifier requires the matching project audit configs whenever that flag is set.
+
+The audit archive bucket has retention configured. Retention locking should be
+enabled only after the retention period is approved because Cloud Storage
+retention locks are irreversible for that period.
 
 ## Known Gaps
 

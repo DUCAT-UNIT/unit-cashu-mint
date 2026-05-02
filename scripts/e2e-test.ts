@@ -396,7 +396,7 @@ const QUOTE_ID = process.env.QUOTE_ID
 
 if (QUOTE_ID) {
   console.log(`Resuming with quote: ${QUOTE_ID}`)
-  // TODO: Resume flow from quote
+  // Future: resume flow from an existing quote when testing interrupted deposits.
 }
 
 main().catch(console.error)

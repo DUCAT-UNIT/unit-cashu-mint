@@ -84,7 +84,7 @@ export const meltRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Rune ID required for unit' })
       }
 
-      // For 'btc' unit, use a placeholder rune_id
+      // Non-rune units still need the quote table's backing-asset discriminator.
       const effectiveRuneId = rune_id || 'btc:0'
 
       const quote = await meltService.createMeltQuote(amount, unit, effectiveRuneId, destination, quoteMethod)

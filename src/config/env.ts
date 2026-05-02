@@ -41,6 +41,10 @@ const envSchema = z
 
     // Optional Lightning backend for standard Cashu bolt11 compatibility
     LIGHTNING_BACKEND: z.enum(['disabled', 'lnbits', 'fake']).default('disabled'),
+    ALLOW_FAKE_LIGHTNING: z
+      .string()
+      .transform((v) => v === 'true')
+      .default('false'),
     LNBITS_URL: z.string().url().optional(),
     LNBITS_INVOICE_KEY: z.string().optional(),
     LNBITS_ADMIN_KEY: z.string().optional(),
@@ -111,11 +115,16 @@ const envSchema = z
       })
     }
 
-    if (value.LIGHTNING_BACKEND === 'fake' && value.NODE_ENV === 'production') {
+    if (
+      value.LIGHTNING_BACKEND === 'fake' &&
+      value.NODE_ENV === 'production' &&
+      !value.ALLOW_FAKE_LIGHTNING
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['LIGHTNING_BACKEND'],
-        message: 'LIGHTNING_BACKEND=fake is only allowed outside production',
+        path: ['ALLOW_FAKE_LIGHTNING'],
+        message:
+          'ALLOW_FAKE_LIGHTNING=true is required to run LIGHTNING_BACKEND=fake with NODE_ENV=production',
       })
     }
 
