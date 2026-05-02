@@ -204,10 +204,12 @@ jobs:
             --tag "$GITHUB_SHA" \
             "${extra_args[@]}"
 
-      - name: Configure Docker for Artifact Registry attestations
-        run: |
-          set -euo pipefail
-          gcloud auth configure-docker "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev" --quiet
+      - name: Authenticate Docker to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
 
       - name: Attest image build provenance
         uses: actions/attest@v4
