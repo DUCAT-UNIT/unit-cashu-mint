@@ -148,7 +148,7 @@ export class WalletKeyManager {
       // - Inputs 1...N: Taproot (rune inputs with UNIT balance, can be multiple)
 
       // Create a wrapper for segwitChild that converts Uint8Array to Buffer
-      const segwitSigner = {
+      const segwitSigner: bitcoin.Signer = {
         publicKey: Buffer.from(segwitChild.publicKey),
         sign: (hash: Buffer) => {
           const sig = segwitChild.sign(hash)
@@ -157,7 +157,7 @@ export class WalletKeyManager {
       }
 
       // Sign Input 0 with SegWit key
-      psbt.signInput(0, segwitSigner as any)
+      psbt.signInput(0, segwitSigner)
 
       // Sign all Taproot inputs (1 through N) with tweaked Taproot key
       // SECURITY: Use bitcoinjs-lib's built-in tweak method
@@ -167,7 +167,7 @@ export class WalletKeyManager {
 
       // Create a wrapper for tweakedSigner that converts Uint8Array to Buffer
       // For Taproot, we need to implement signSchnorr
-      const taprootSigner = {
+      const taprootSigner: bitcoin.Signer = {
         publicKey: Buffer.from(tweakedSigner.publicKey),
         sign: (hash: Buffer) => {
           const sig = tweakedSigner.sign(hash)
@@ -182,7 +182,7 @@ export class WalletKeyManager {
       // Sign all taproot inputs (inputs 1 through N)
       const inputCount = psbt.data.inputs.length
       for (let i = 1; i < inputCount; i++) {
-        psbt.signInput(i, taprootSigner as any)
+        psbt.signInput(i, taprootSigner)
       }
 
       // Finalize all inputs
@@ -192,11 +192,14 @@ export class WalletKeyManager {
 
       return psbt
     } catch (error) {
-      logger.error({
-        error,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        errorStack: error instanceof Error ? error.stack : undefined
-      }, 'Error signing PSBT')
+      logger.error(
+        {
+          error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+        },
+        'Error signing PSBT'
+      )
       throw error
     }
   }

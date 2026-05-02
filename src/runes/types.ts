@@ -2,6 +2,8 @@
  * Runes-specific types for the mint server
  */
 
+import type * as bitcoin from 'bitcoinjs-lib'
+
 export interface RuneId {
   block: bigint
   tx: bigint
@@ -38,7 +40,7 @@ export interface RunestoneConfig {
 }
 
 export interface TransactionIntent {
-  psbt: any // Will be typed as bitcoin.Psbt after import
+  psbt: bitcoin.Psbt
   fee: number
   runeUtxo: RuneUtxo
   satUtxo: SatUtxo
@@ -53,10 +55,13 @@ export interface OrdOutputResponse {
   transaction: string
   value: number
   spent: boolean
-  runes?: Record<string, {
-    amount: string
-    id: string // "block:tx"
-  }>
+  runes?: Record<
+    string,
+    {
+      amount: string
+      id: string // "block:tx"
+    }
+  >
 }
 
 export interface EsploraUtxo {

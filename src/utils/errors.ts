@@ -20,6 +20,18 @@ export class MintError extends Error {
   }
 }
 
+export function hasErrorCode(
+  error: unknown,
+  code: string | number
+): error is { code: string | number } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  )
+}
+
 /**
  * Proof-related errors
  */

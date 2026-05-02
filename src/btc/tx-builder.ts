@@ -181,7 +181,7 @@ export class BTCTxBuilder {
       const inputAccountIndex = selectedUtxos?.[i]?.accountIndex ?? accountIndex
       const segwitPath = `m/84'/1'/0'/0/${inputAccountIndex}`
       const segwitChild = root.derivePath(segwitPath)
-      const signer = {
+      const signer: bitcoin.Signer = {
         publicKey: Buffer.from(segwitChild.publicKey),
         sign: (hash: Buffer) => {
           const sig = segwitChild.sign(hash)
@@ -189,7 +189,7 @@ export class BTCTxBuilder {
         },
       }
 
-      psbt.signInput(i, signer as any)
+      psbt.signInput(i, signer)
     }
 
     psbt.finalizeAllInputs()

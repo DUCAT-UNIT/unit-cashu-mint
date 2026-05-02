@@ -9,10 +9,7 @@ import {
   MintQuoteResponse,
   OnchainMintQuoteResponse,
 } from '../../types/cashu.js'
-import {
-  AmountMismatchError,
-  MintError,
-} from '../../utils/errors.js'
+import { AmountMismatchError, hasErrorCode, MintError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
@@ -44,9 +41,7 @@ export class MintService {
 
     // Validate amount
     if (amount < env.MIN_MINT_AMOUNT || amount > env.MAX_MINT_AMOUNT) {
-      throw new Error(
-        `Amount must be between ${env.MIN_MINT_AMOUNT} and ${env.MAX_MINT_AMOUNT}`
-      )
+      throw new Error(`Amount must be between ${env.MIN_MINT_AMOUNT} and ${env.MAX_MINT_AMOUNT}`)
     }
 
     // Ensure keyset exists for this rune
@@ -59,9 +54,9 @@ export class MintService {
       try {
         await this.keyManager.generateKeyset(runeId, unit)
         logger.info({ runeId, unit }, 'Generated new keyset for rune')
-      } catch (error: any) {
+      } catch (error) {
         // If duplicate key error (23505), the keyset already exists - this is fine
-        if (error?.code === '23505') {
+        if (hasErrorCode(error, '23505')) {
           logger.debug({ runeId, unit }, 'Keyset already exists (race condition), continuing')
         } else {
           // Re-throw other errors
@@ -78,10 +73,7 @@ export class MintService {
 
     // Generate deposit address using the backend
     // Amount is already in smallest units (integer)
-    const depositAddress = await backend.createDepositAddress(
-      quoteId,
-      BigInt(amount)
-    )
+    const depositAddress = await backend.createDepositAddress(quoteId, BigInt(amount))
 
     // Set expiry (24 hours from now)
     const expiry = Math.floor(Date.now() / 1000) + 24 * 60 * 60
@@ -163,7 +155,12 @@ export class MintService {
       try {
         const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
         // Pass expected amount for exact UTXO matching (helps BTC backend with shared addresses)
-        const depositStatus = await backend.checkDeposit(quoteId, quote.request, false, BigInt(quote.amount))
+        const depositStatus = await backend.checkDeposit(
+          quoteId,
+          quote.request,
+          false,
+          BigInt(quote.amount)
+        )
 
         if (depositStatus.confirmed) {
           // CRITICAL: Verify actual Runes amount received matches quote amount
@@ -177,7 +174,7 @@ export class MintService {
                   quoteId,
                   expectedAmount: expectedAmount.toString(),
                   receivedAmount: receivedAmount.toString(),
-                  difference: (receivedAmount - expectedAmount).toString()
+                  difference: (receivedAmount - expectedAmount).toString(),
                 },
                 'Deposit amount mismatch - quote will remain UNPAID'
               )
@@ -211,7 +208,12 @@ export class MintService {
           })
 
           logger.info(
-            { quoteId, txid: depositStatus.txid, vout: depositStatus.vout, confirmations: depositStatus.confirmations },
+            {
+              quoteId,
+              txid: depositStatus.txid,
+              vout: depositStatus.vout,
+              confirmations: depositStatus.confirmations,
+            },
             'Deposit confirmed, quote marked as PAID'
           )
         }
@@ -258,7 +260,13 @@ export class MintService {
     // - Chain reorgs removing the deposit after quote marked PAID
     // - Race conditions between marking PAID and minting tokens
     logger.info(
-      { quoteId, currentState: quote.state, quoteTxid: quote.txid, quoteVout: quote.vout, requiredConfirmations: env.MINT_CONFIRMATIONS },
+      {
+        quoteId,
+        currentState: quote.state,
+        quoteTxid: quote.txid,
+        quoteVout: quote.vout,
+        requiredConfirmations: env.MINT_CONFIRMATIONS,
+      },
       'Verifying deposit on-chain before minting'
     )
 
@@ -282,7 +290,7 @@ export class MintService {
         {
           quoteId,
           confirmations: depositStatus.confirmations ?? 0,
-          required: env.MINT_CONFIRMATIONS
+          required: env.MINT_CONFIRMATIONS,
         },
         'Deposit not yet confirmed with required confirmations - refusing to mint'
       )
@@ -293,9 +301,8 @@ export class MintService {
 
     // CRITICAL: Verify actual Runes amount received matches quote amount
     // This prevents exploitation where user requests 1000 but only sends 100
-    const depositAmount = depositStatus.amount ?? (
-      quote.method === 'bolt11' ? BigInt(quote.amount) : undefined
-    )
+    const depositAmount =
+      depositStatus.amount ?? (quote.method === 'bolt11' ? BigInt(quote.amount) : undefined)
 
     if (depositAmount !== undefined) {
       const receivedAmount = depositAmount
@@ -307,7 +314,7 @@ export class MintService {
             quoteId,
             expectedAmount: expectedAmount.toString(),
             receivedAmount: receivedAmount.toString(),
-            difference: (receivedAmount - expectedAmount).toString()
+            difference: (receivedAmount - expectedAmount).toString(),
           },
           'SECURITY: Deposit amount mismatch - refusing to mint'
         )
@@ -378,7 +385,10 @@ export class MintService {
     await this.signatureRepo?.saveMany(outputs, signatures)
     await this.quoteRepo.incrementMintQuoteIssued(quoteId, totalOutput)
 
-    logger.info({ quoteId, totalOutput, signatureCount: signatures.length }, 'Onchain tokens minted')
+    logger.info(
+      { quoteId, totalOutput, signatureCount: signatures.length },
+      'Onchain tokens minted'
+    )
 
     return { signatures }
   }
@@ -444,8 +454,8 @@ export class MintService {
     try {
       await this.keyManager.generateKeyset(runeId, unit)
       logger.info({ runeId, unit }, 'Generated new keyset')
-    } catch (error: any) {
-      if (error?.code === '23505') {
+    } catch (error) {
+      if (hasErrorCode(error, '23505')) {
         logger.debug({ runeId, unit }, 'Keyset already exists (race condition), continuing')
         return
       }
@@ -481,7 +491,9 @@ export class MintService {
 
     let isValid = false
     try {
-      const blindedMessages = outputs as unknown as Parameters<typeof cashuVerifyMintQuoteSignature>[2]
+      const blindedMessages = outputs as unknown as Parameters<
+        typeof cashuVerifyMintQuoteSignature
+      >[2]
       isValid = cashuVerifyMintQuoteSignature(pubkey, quoteId, blindedMessages, signature)
     } catch {
       isValid = false

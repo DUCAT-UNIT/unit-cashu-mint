@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { SwapService } from '../../core/services/SwapService.js'
 import { Proof, BlindedMessage } from '../../types/cashu.js'
+import { hasErrorCode } from '../../utils/errors.js'
 
 interface SwapRequest {
   inputs: Proof[]
@@ -28,11 +29,11 @@ export const swapRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const result = await swapService.swap(inputs, outputs)
       return reply.code(200).send(result)
-    } catch (error: any) {
-      if (error.code === 'P2PK_VERIFICATION_FAILED') {
+    } catch (error) {
+      if (hasErrorCode(error, 'P2PK_VERIFICATION_FAILED')) {
         return reply.code(403).send({
           error: 'P2PK verification failed',
-          detail: 'Proof is locked to a public key and requires a valid signature witness'
+          detail: 'Proof is locked to a public key and requires a valid signature witness',
         })
       }
       throw error

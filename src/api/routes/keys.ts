@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { KeyManager } from '../../core/crypto/KeyManager.js'
 import { env } from '../../config/env.js'
+import { hasErrorCode } from '../../utils/errors.js'
 
 export const keysRoutes: FastifyPluginAsync = async (fastify) => {
   const keyManager = fastify.diContainer.resolve<KeyManager>('keyManager')
@@ -21,8 +22,8 @@ export const keysRoutes: FastifyPluginAsync = async (fastify) => {
       if (!existing) {
         try {
           await keyManager.generateKeyset(target.runeId, target.unit)
-        } catch (error: any) {
-          if (error?.code !== '23505') {
+        } catch (error) {
+          if (!hasErrorCode(error, '23505')) {
             throw error
           }
         }
@@ -57,15 +58,12 @@ export const keysRoutes: FastifyPluginAsync = async (fastify) => {
    * GET /v1/keys/:keyset_id
    * Get public keys for a specific keyset (NUT-01)
    */
-  fastify.get<{ Params: { keyset_id: string } }>(
-    '/v1/keys/:keyset_id',
-    async (request, reply) => {
-      const { keyset_id } = request.params
+  fastify.get<{ Params: { keyset_id: string } }>('/v1/keys/:keyset_id', async (request, reply) => {
+    const { keyset_id } = request.params
 
-      const keys = await keyManager.getPublicKeys(keyset_id)
-      return reply.code(200).send({ keysets: [keys] })
-    }
-  )
+    const keys = await keyManager.getPublicKeys(keyset_id)
+    return reply.code(200).send({ keysets: [keys] })
+  })
 
   /**
    * GET /v1/keysets

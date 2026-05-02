@@ -3,7 +3,7 @@ import { deriveKeysetId } from '@cashu/cashu-ts'
 import { KeysetRepository } from '../../database/repositories/KeysetRepository.js'
 import { Keyset } from '../models/Keyset.js'
 import { MintKeys } from '../../types/cashu.js'
-import { KeysetNotFoundError, KeysetInactiveError } from '../../utils/errors.js'
+import { KeysetNotFoundError, KeysetInactiveError, hasErrorCode } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { getPublicKey } from '@noble/secp256k1'
@@ -245,8 +245,8 @@ export class KeyManager {
       )
       try {
         keyset = await this.generateKeyset(runeId, unit)
-      } catch (error: any) {
-        if (error?.code !== '23505') {
+      } catch (error) {
+        if (!hasErrorCode(error, '23505')) {
           throw error
         }
 
