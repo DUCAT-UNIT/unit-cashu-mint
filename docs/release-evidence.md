@@ -38,23 +38,23 @@ should use `LIGHTNING_BACKEND=lnbits` with `LNBITS_URL`,
 
 ## Main Checks
 
-Current main release commit:
+Current deployed release commit:
 
 ```text
-024023901d074ceb2fd9badeaf2a8eede7aa7367
+2e42902c9be24dbea4df08f9f0b6dd631685d9ff
 ```
 
 Green checks on that commit:
 
-- CI: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25253476678`
-- Cashu Interop: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25253476654`
-- Cashu Upstream Compatibility: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25253476667`
-- GCP Confidential Space Release: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25253476653`
+- CI: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141716`
+- Cashu Interop: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141722`
+- Cashu Upstream Compatibility: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141721`
+- GCP Confidential Space Release: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141719`
 
-Latest dev redeploy after metadata/audit updates:
+Latest dev redeploy after metadata, audit, and guarded dev Lightning updates:
 
 ```text
-https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254088629
+https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141719
 ```
 
 ## Secure Update Flow
