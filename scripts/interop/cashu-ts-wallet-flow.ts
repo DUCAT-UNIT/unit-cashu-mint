@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   MintQuoteState,
   Wallet,
@@ -8,13 +11,18 @@ import {
   type Proof,
 } from '@cashu/cashu-ts'
 
-const DEFAULT_MELT_INVOICE =
-  'lnbcrt620n1pn0r3vepp5zljn7g09fsyeahl4rnhuy0xax2puhua5r3gspt7ttlfrley6valqdqqcqzzsxqyz5vqsp577h763sel3q06tfnfe75kvwn5pxn344sd5vnays65f9wfgx4fpzq9qxpqysgqg3re9afz9rwwalytec04pdhf9mvh3e2k4r877tw7dr4g0fvzf9sny5nlfggdy6nduy2dytn06w50ls34qfldgsj37x0ymxam0a687mspp0ytr8'
+const scriptDir = dirname(fileURLToPath(import.meta.url))
 
 const mintUrl = process.env.MINT_URL ?? 'http://127.0.0.1:3338'
 const mintAmount = Number(process.env.MINT_AMOUNT ?? '128')
 const sendAmount = Number(process.env.SEND_AMOUNT ?? '21')
-const meltInvoice = process.env.MELT_INVOICE ?? DEFAULT_MELT_INVOICE
+const meltInvoice =
+  process.env.MELT_INVOICE ??
+  execFileSync(
+    process.execPath,
+    [join(scriptDir, 'fake-ln-invoice.mjs'), '--amount', '62', '--label', 'cashu-ts-wallet-flow'],
+    { encoding: 'utf8' }
+  ).trim()
 
 function amount(proofs: Proof[]): number {
   return sumProofs(proofs).toNumber()

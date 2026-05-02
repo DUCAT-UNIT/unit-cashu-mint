@@ -2,7 +2,8 @@
 set -euo pipefail
 
 MINT_URL="${MINT_URL:-http://127.0.0.1:3338}"
-MELT_INVOICE="${MELT_INVOICE:-lnbcrt620n1pn0r3vepp5zljn7g09fsyeahl4rnhuy0xax2puhua5r3gspt7ttlfrley6valqdqqcqzzsxqyz5vqsp577h763sel3q06tfnfe75kvwn5pxn344sd5vnays65f9wfgx4fpzq9qxpqysgqg3re9afz9rwwalytec04pdhf9mvh3e2k4r877tw7dr4g0fvzf9sny5nlfggdy6nduy2dytn06w50ls34qfldgsj37x0ymxam0a687mspp0ytr8}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+MELT_INVOICE="${MELT_INVOICE:-$(node "$SCRIPT_DIR/fake-ln-invoice.mjs" --amount 62 --label cdk-wallet-flow)}"
 CDK_REPO="${CDK_REPO:-https://github.com/cashubtc/cdk.git}"
 CDK_REF="${CDK_REF:-main}"
 WORKDIR="${WORKDIR:-$(pwd)/.interop/cdk}"

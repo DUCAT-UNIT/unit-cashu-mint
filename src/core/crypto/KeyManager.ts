@@ -15,7 +15,7 @@ const DENOMINATIONS = [
   262144, 524288, 1048576, 2097152, 4194304, 8388608,
 ]
 
-export const DEFAULT_INPUT_FEE_PPK = 100
+export const DEFAULT_INPUT_FEE_PPK = 0
 
 export function deriveMintKeysetId(
   publicKeys: Record<number, string>,
