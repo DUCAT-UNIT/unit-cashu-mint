@@ -111,7 +111,7 @@ export function buildMintInfo(config: MintInfoConfig) {
       '10': { supported: true },
       '11': { supported: true },
       '12': { supported: false },
-      '20': { supported: true },
+      '20': { supported: false },
       '23': { supported: config.SUPPORTS_LIGHTNING },
       '26': { supported: config.SUPPORTED_UNITS_ARRAY.includes('unit') || config.SUPPORTS_BITCOIN },
     },
