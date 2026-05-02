@@ -79,20 +79,29 @@ const proofs = await wallet.mintProofsBolt11(mintAmount, paidQuote)
 assert.equal(amount(proofs), mintAmount)
 
 const sent = await wallet.send(sendAmount, proofs)
+const sendInputFee = wallet.getFeesForProofs(proofs).toNumber()
 assert.equal(amount(sent.send), sendAmount)
-assert.equal(amount(sent.keep), mintAmount - sendAmount)
+assert.equal(amount(sent.keep), mintAmount - sendAmount - sendInputFee)
 
 const meltQuote = await wallet.createMeltQuoteBolt11(meltInvoice)
 const meltTotal = meltQuote.amount.add(meltQuote.fee_reserve).toNumber()
 const selectedForMelt = await wallet.send(meltTotal, sent.keep, { includeFees: true })
-assert.equal(amount(selectedForMelt.send), meltTotal)
+assert(amount(selectedForMelt.send) >= meltTotal)
 
 const melt = await wallet.meltProofsBolt11(meltQuote, selectedForMelt.send)
 assert.equal(melt.quote.state, 'PAID')
-assert.equal(amount(melt.change), meltQuote.fee_reserve.toNumber())
+assert(amount(melt.change) < meltQuote.fee_reserve.toNumber())
 
 const remaining = amount(selectedForMelt.keep) + amount(melt.change)
-assert.equal(remaining, mintAmount - sendAmount - meltQuote.amount.toNumber())
+const meltInputFee = wallet.getFeesForProofs(selectedForMelt.send).toNumber()
+const secondSwapFee =
+  amount(sent.keep) - amount(selectedForMelt.keep) - amount(selectedForMelt.send)
+const fakeLightningFeePaid = 1
+assert(secondSwapFee >= 0)
+assert.equal(
+  amount(sent.keep) - remaining,
+  meltQuote.amount.toNumber() + secondSwapFee + meltInputFee + fakeLightningFeePaid
+)
 
 console.log(
   JSON.stringify(
@@ -102,6 +111,9 @@ console.log(
       sent: amount(sent.send),
       melted: meltQuote.amount.toNumber(),
       feeReserveReturned: amount(melt.change),
+      sendInputFee,
+      secondSwapFee,
+      meltInputFee,
       remaining,
     },
     null,

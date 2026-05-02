@@ -21,13 +21,13 @@ describe('FakeLightningBackend', () => {
     })
   })
 
-  it('uses a fee reserve but settles fake withdrawals with zero paid fee', async () => {
+  it('uses a fee reserve and reports paid fee for fake withdrawals', async () => {
     const backend = new FakeLightningBackend()
 
     await expect(backend.estimateFee('lnbc...', 62n)).resolves.toBe(2)
     await expect(backend.withdraw('lnbc...', 62n)).resolves.toEqual({
       txid: '0'.repeat(64),
-      fee_paid: 0,
+      fee_paid: 1,
     })
   })
 })

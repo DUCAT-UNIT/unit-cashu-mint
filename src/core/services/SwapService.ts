@@ -2,7 +2,7 @@ import { MintCrypto } from '../crypto/MintCrypto.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
 import { P2PKService } from './P2PKService.js'
 import { Proof, BlindedMessage, BlindSignature } from '../../types/cashu.js'
-import { AmountMismatchError } from '../../utils/errors.js'
+import { AmountMismatchError, MintError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { SignatureRepository } from '../../database/repositories/SignatureRepository.js'
 
@@ -50,11 +50,8 @@ export class SwapService {
 
     // 2b. Verify P2PK spending conditions (NUT-11), including SIG_ALL.
     if (!this.p2pkService.verifyP2PKProofs(inputs, outputs)) {
-      const err: any = new Error(
-        'P2PK witness verification failed - proof is locked to a public key and requires a valid signature witness'
-      )
-      err.code = 'P2PK_VERIFICATION_FAILED'
-      throw err
+      const message = 'Witness P2PK signatures not provided or invalid'
+      throw new MintError(message, 20008, message)
     }
 
     // 3. Hash secrets to Y values for database lookup

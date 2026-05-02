@@ -19,6 +19,7 @@ export class FakeLightningBackend implements IPaymentBackend {
   readonly method = 'bolt11'
   readonly unit = 'sat'
   private readonly feeReserve = 2
+  private readonly feePaid = 1
 
   async createDepositAddress(quoteId: string, amount: bigint): Promise<string> {
     const invoice = this.fakeInvoice(quoteId, amount)
@@ -60,7 +61,7 @@ export class FakeLightningBackend implements IPaymentBackend {
   async withdraw(_destination: string, _amount: bigint): Promise<WithdrawalResult> {
     return {
       txid: '0'.repeat(64),
-      fee_paid: 0,
+      fee_paid: this.feePaid,
     }
   }
 

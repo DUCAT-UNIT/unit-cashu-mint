@@ -4,7 +4,7 @@ import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
 import { P2PKService } from './P2PKService.js'
 import { BlindedMessage, BlindSignature, Proof, MeltQuoteResponse, OnchainMeltQuoteResponse } from '../../types/cashu.js'
-import { AmountMismatchError } from '../../utils/errors.js'
+import { AmountMismatchError, MintError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
@@ -228,7 +228,8 @@ export class MeltService {
 
     // 4b. Verify P2PK spending conditions (NUT-11), including SIG_ALL melts.
     if (!this.p2pkService.verifyP2PKProofs(inputs, outputs, quoteId)) {
-      throw new Error('P2PK witness verification failed for proof')
+      const message = 'Witness P2PK signatures not provided or invalid'
+      throw new MintError(message, 20008, message)
     }
 
     // 5. Hash secrets to Y values for database lookup

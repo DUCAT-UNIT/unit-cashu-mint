@@ -93,7 +93,7 @@ export async function createServer() {
       return reply.status(400).send({
         error: error.message,
         code: mintError.code,
-        detail: mintError.detail,
+        detail: mintError.detail ?? error.message,
       })
     }
 
