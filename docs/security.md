@@ -121,6 +121,13 @@ Logs for sensitive admin changes. The monitor allows the configured deploy
 service account and fails on unexpected principals, which turns the release-time
 attestation into an ongoing tamper-evidence check.
 
+The Caddy ACME persistence loop writes new Secret Manager versions from inside
+the attested workload. Cloud Audit Logs records those writes without a normal
+principal email, so the monitor allows only anonymous-principal
+`AddSecretVersion` events against the configured Caddy ACME secret. Other
+Secret Manager mutations remain unexpected unless the actor is explicitly
+allowlisted.
+
 Terraform grants the monitor service account Cloud Logging read access when
 `audit_monitor_reader_service_account_email` is configured. That permission is
 limited to audit review and is separate from runtime secret/KMS access; the VM

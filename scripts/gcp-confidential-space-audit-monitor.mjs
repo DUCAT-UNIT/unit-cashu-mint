@@ -30,13 +30,27 @@ const allowedPrincipals = unique([
 const failOnFindings = parseBoolean(
   args['fail-on-findings'] ?? process.env.AUDIT_FAIL_ON_FINDINGS ?? true
 )
+const caddyAcmeStorageEnabled = parseBoolean(
+  args['caddy-acme-storage-enabled'] ??
+    process.env.TF_VAR_confidential_space_caddy_acme_storage_enabled ??
+    true
+)
+const configuredCaddyAcmeSecretId = (
+  args['caddy-acme-secret-id'] ??
+  process.env.TF_VAR_confidential_space_caddy_acme_secret_id ??
+  ''
+).trim()
+const caddyAcmeSecretId = configuredCaddyAcmeSecretId || `${namePrefix}-caddy-acme`
 
 const token = await getAccessToken()
 const lookbackSince = new Date(Date.now() - lookbackMinutes * 60 * 1000)
 const sinceDate = baselineTime ? maxDate(lookbackSince, new Date(baselineTime)) : lookbackSince
 const since = sinceDate.toISOString()
 const events = await listSensitiveAdminEvents(since)
-const unexpectedEvents = events.filter((event) => !allowedPrincipals.includes(event.principalEmail))
+const expectedSystemEvents = events.filter(isExpectedSystemEvent)
+const unexpectedEvents = events.filter(
+  (event) => !allowedPrincipals.includes(event.principalEmail) && !isExpectedSystemEvent(event)
+)
 
 const predicate = {
   predicateType: 'https://ducatprotocol.com/attestations/gcp-confidential-space-audit-monitor/v1',
@@ -55,12 +69,18 @@ const predicate = {
   },
   policy: {
     allowedPrincipals,
+    expectedSystemEvents: {
+      caddyAcmeSecretId,
+      caddyAcmeStorageEnabled,
+    },
     failOnFindings,
   },
   summary: {
     sensitiveAdminEvents: events.length,
+    expectedSystemEvents: expectedSystemEvents.length,
     unexpectedSensitiveAdminEvents: unexpectedEvents.length,
   },
+  expectedSystemEvents,
   unexpectedEvents,
 }
 
@@ -135,10 +155,27 @@ async function listSensitiveAdminEvents(sinceTimestamp) {
     insertId: entry.insertId,
     logName: entry.logName,
     principalEmail: entry.protoPayload?.authenticationInfo?.principalEmail ?? '',
+    principalSubject: entry.protoPayload?.authenticationInfo?.principalSubject ?? '',
     serviceName: entry.protoPayload?.serviceName ?? '',
     methodName: entry.protoPayload?.methodName ?? '',
     resourceName: entry.protoPayload?.resourceName ?? '',
   }))
+}
+
+function isExpectedSystemEvent(event) {
+  if (!caddyAcmeStorageEnabled || !caddyAcmeSecretId) {
+    return false
+  }
+  if (event.principalEmail) {
+    return false
+  }
+  if (event.serviceName !== 'secretmanager.googleapis.com') {
+    return false
+  }
+  if (!event.methodName.endsWith('AddSecretVersion')) {
+    return false
+  }
+  return event.resourceName.includes(`/secrets/${caddyAcmeSecretId}/versions/`)
 }
 
 function sensitiveMethodFilter() {
@@ -288,11 +325,18 @@ Audit monitor JSON SHA-256: \`${checksum}\`
 
 Sensitive admin events: \`${predicate.summary.sensitiveAdminEvents}\`
 
+Expected system events: \`${predicate.summary.expectedSystemEvents}\`
+
 Unexpected sensitive admin events: \`${predicate.summary.unexpectedSensitiveAdminEvents}\`
 
 Allowed principals:
 
 ${predicate.policy.allowedPrincipals.map((principal) => `- \`${principal}\``).join('\n') || '- none'}
+
+Expected system event policy:
+
+- Caddy ACME storage secret: \`${predicate.policy.expectedSystemEvents.caddyAcmeSecretId}\`
+- Caddy ACME storage enabled: \`${predicate.policy.expectedSystemEvents.caddyAcmeStorageEnabled}\`
 
 ## Unexpected Events
 

@@ -306,6 +306,11 @@ changes. The configured deploy service account is allowed; unexpected
 principals fail the workflow and leave a JSON/markdown evidence artifact for
 review.
 
+The monitor treats Caddy ACME storage snapshots as expected system events only
+when the audit entry is an anonymous-principal `AddSecretVersion` against the
+configured Caddy ACME Secret Manager secret. Other Secret Manager writes still
+fail unless the actor is explicitly allowed.
+
 Terraform grants that workflow service account `roles/logging.viewer` only when
 `audit_monitoring_enabled = true` and
 `audit_monitor_reader_service_account_email` is set. This permission is for
