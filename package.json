@@ -14,6 +14,8 @@
     "interop:cashu-ts": "tsx scripts/interop/cashu-ts-wallet-flow.ts",
     "interop:cdk": "bash scripts/interop/cdk-wallet-flow.sh",
     "interop:nutshell": "bash scripts/interop/nutshell-wallet-flow.sh",
+    "gcp:confidential-space:build": "node scripts/gcp-confidential-space-build.mjs",
+    "gcp:confidential-space:attest": "node scripts/gcp-confidential-space-attest.mjs",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\"",
     "migrate": "tsx src/scripts/migrate.ts"

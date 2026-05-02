@@ -171,6 +171,64 @@ The digest is part of the Workload Identity Provider attestation condition and
 the KMS/Secret Manager IAM principalSet. A new container digest intentionally
 requires a Terraform update before the new workload can decrypt.
 
+## Release CI And Attestation
+
+`.github/workflows/gcp-confidential-space-release.yml` is the release path for
+digest updates. It:
+
+1. runs static checks;
+2. authenticates to GCP through GitHub OIDC;
+3. builds the Confidential Space container in Cloud Build;
+4. signs GitHub Artifact Attestations for the image digest;
+5. runs Terraform with the new image reference and digest;
+6. stop/starts the Confidential Space VM so the launcher boots the new digest;
+7. verifies the live deployment and writes a signed custom deployment
+   attestation predicate for the same image digest.
+
+The deployment verifier is `scripts/gcp-confidential-space-attest.mjs`. It does
+not read Secret Manager payloads and does not call Cloud KMS encrypt/decrypt.
+It checks live GCP state instead:
+
+- the VM is a running Confidential Space instance with Shielded VM enabled;
+- instance metadata points at the expected pinned image digest and contains no
+  DB password, `DATABASE_URL`, mint seed, or mint private key;
+- the Workload Identity provider condition requires the expected image digest,
+  runtime service account, `CONFIDENTIAL_SPACE`, stable support, and production
+  debug status;
+- app-level Cloud KMS and Secret Manager IAM include the expected digest-bound
+  principalSet;
+- the runtime VM service account has no direct app-KMS decrypt or Secret
+  Manager accessor role;
+- Secret Manager uses CMEK, Cloud SQL is private-IP only and CMEK encrypted,
+  and the public mint endpoints are healthy.
+
+The workflow needs these GitHub environment/repository variables:
+
+```text
+GCP_PROJECT_ID
+GCP_WORKLOAD_IDENTITY_PROVIDER
+GCP_DEPLOY_SERVICE_ACCOUNT
+GCP_TF_STATE_BUCKET
+GCP_MINT_DOMAIN_NAME
+GCP_TLS_EMAIL
+```
+
+And this GitHub secret:
+
+```text
+GCP_MINT_DB_PASSWORD
+```
+
+Optional variables include `GCP_REGION`, `GCP_ZONE`,
+`GCP_ARTIFACT_REGISTRY_LOCATION`, `GCP_ARTIFACT_REGISTRY_REPOSITORY`,
+`GCP_ARTIFACT_REGISTRY_IMAGE`, `GCP_CLOUD_BUILD_SOURCE_BUCKET`, and
+`GCP_TF_STATE_PREFIX`.
+
+The CI deploy expects Terraform state in a GCS backend. For the already-running
+dev deployment, migrate the local state into the configured state bucket before
+turning on CI applies. Without that migration, CI has no knowledge of the
+existing resources and must not be used to apply.
+
 For the fully managed database path, also set:
 
 ```hcl

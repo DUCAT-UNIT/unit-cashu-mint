@@ -21,6 +21,7 @@ pnpm-debug.log*
 coverage/
 coverage-*.txt
 .vitest/
+attestations/
 
 # OS
 .DS_Store

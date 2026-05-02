@@ -47,15 +47,31 @@ try {
     imageTag,
   })
   const digest = findImageDigest(build, imageTag)
+  const imageSubjectName = `${host}/${projectId}/${repository}/${imageName}`
   const pinnedReference = `${host}/${projectId}/${repository}/${imageName}@${digest}`
+  const outputs = {
+    image_tag: imageTag,
+    image_subject_name: imageSubjectName,
+    image_digest: digest,
+    cloud_build_id: build?.id ?? '',
+    confidential_space_image_reference: pinnedReference,
+    confidential_space_image_digest: digest,
+  }
 
   console.log(`image_tag=${imageTag}`)
+  console.log(`image_subject_name=${imageSubjectName}`)
+  console.log(`image_digest=${digest}`)
+  if (build?.id) {
+    console.log(`cloud_build_id=${build.id}`)
+  }
   console.log(`confidential_space_image_reference=${pinnedReference}`)
   console.log(`confidential_space_image_digest=${digest}`)
   console.log('')
   console.log('Terraform values:')
   console.log(`confidential_space_image_reference = "${pinnedReference}"`)
   console.log(`confidential_space_image_digest    = "${digest}"`)
+
+  await writeGithubOutputs(outputs)
 } finally {
   await rm(tempDir, { recursive: true, force: true })
 }
@@ -98,7 +114,28 @@ async function readTfvars(path) {
   }
 }
 
+async function writeGithubOutputs(outputs) {
+  if (!process.env.GITHUB_OUTPUT) {
+    return
+  }
+
+  const content = Object.entries(outputs)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n')
+  await import('node:fs/promises').then(({ appendFile }) =>
+    appendFile(process.env.GITHUB_OUTPUT, `${content}\n`, 'utf8')
+  )
+}
+
 async function getAccessToken() {
+  const ambientToken =
+    process.env.GCP_ACCESS_TOKEN ??
+    process.env.GOOGLE_OAUTH_ACCESS_TOKEN ??
+    process.env.CLOUDSDK_AUTH_ACCESS_TOKEN
+  if (ambientToken) {
+    return ambientToken
+  }
+
   const credentialsPath =
     process.env.GOOGLE_APPLICATION_CREDENTIALS ??
     join(homedir(), '.config/gcloud/application_default_credentials.json')

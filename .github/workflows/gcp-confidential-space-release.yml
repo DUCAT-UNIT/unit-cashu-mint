@@ -1,0 +1,272 @@
+name: GCP Confidential Space Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Terraform environment name, for example dev or prod.
+        required: true
+        default: dev
+        type: string
+      domain_name:
+        description: Optional mint domain override. Defaults to vars.GCP_MINT_DOMAIN_NAME.
+        required: false
+        default: ''
+        type: string
+      terraform_apply:
+        description: Apply Terraform and restart the Confidential Space instance.
+        required: true
+        default: true
+        type: boolean
+      restart_instance:
+        description: Stop/start the Confidential Space VM after Terraform apply.
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: gcp-confidential-space-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+env:
+  NODE_VERSION: '22'
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  GCP_ZONE: ${{ vars.GCP_ZONE || 'us-central1-a' }}
+  ENVIRONMENT_NAME: ${{ inputs.environment }}
+  DOMAIN_NAME: ${{ inputs.domain_name || vars.GCP_MINT_DOMAIN_NAME }}
+  ARTIFACT_REGISTRY_LOCATION: ${{ vars.GCP_ARTIFACT_REGISTRY_LOCATION || vars.GCP_REGION || 'us-central1' }}
+  ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.GCP_ARTIFACT_REGISTRY_REPOSITORY || 'ducat-mint' }}
+  ARTIFACT_REGISTRY_IMAGE: ${{ vars.GCP_ARTIFACT_REGISTRY_IMAGE || 'mint-server' }}
+  CLOUD_BUILD_SOURCE_BUCKET: ${{ vars.GCP_CLOUD_BUILD_SOURCE_BUCKET }}
+  TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET }}
+  TF_STATE_PREFIX: ${{ vars.GCP_TF_STATE_PREFIX || format('mint-server/{0}', inputs.environment) }}
+  TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+  TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+  TF_VAR_zone: ${{ vars.GCP_ZONE || 'us-central1-a' }}
+  TF_VAR_environment: ${{ inputs.environment }}
+  TF_VAR_domain_name: ${{ inputs.domain_name || vars.GCP_MINT_DOMAIN_NAME }}
+  TF_VAR_tls_email: ${{ vars.GCP_TLS_EMAIL }}
+  TF_VAR_repo_url: ${{ github.server_url }}/${{ github.repository }}.git
+  TF_VAR_repo_ref: ${{ github.sha }}
+  TF_VAR_deployment_mode: confidential-space
+  TF_VAR_confidential_space_image_family: ${{ vars.GCP_CONFIDENTIAL_SPACE_IMAGE_FAMILY || 'confidential-space' }}
+  TF_VAR_confidential_instance_type: ${{ vars.GCP_CONFIDENTIAL_INSTANCE_TYPE || 'SEV' }}
+  TF_VAR_machine_type: ${{ vars.GCP_CONFIDENTIAL_MACHINE_TYPE || 'n2d-standard-4' }}
+  TF_VAR_mint_env_secret_id: ${{ vars.GCP_MINT_ENV_SECRET_ID || 'ducat-mint-env' }}
+  TF_VAR_create_artifact_registry_repository: ${{ vars.GCP_CREATE_ARTIFACT_REGISTRY_REPOSITORY || 'false' }}
+  TF_VAR_artifact_registry_location: ${{ vars.GCP_ARTIFACT_REGISTRY_LOCATION || vars.GCP_REGION || 'us-central1' }}
+  TF_VAR_artifact_registry_repository_id: ${{ vars.GCP_ARTIFACT_REGISTRY_REPOSITORY || 'ducat-mint' }}
+  TF_VAR_artifact_registry_image_name: ${{ vars.GCP_ARTIFACT_REGISTRY_IMAGE || 'mint-server' }}
+  TF_VAR_managed_postgres_enabled: ${{ vars.GCP_MANAGED_POSTGRES_ENABLED || 'true' }}
+  TF_VAR_managed_postgres_database_version: ${{ vars.GCP_MANAGED_POSTGRES_DATABASE_VERSION || 'POSTGRES_16' }}
+  TF_VAR_managed_postgres_tier: ${{ vars.GCP_MANAGED_POSTGRES_TIER || 'db-custom-1-3840' }}
+  TF_VAR_managed_postgres_disk_size_gb: ${{ vars.GCP_MANAGED_POSTGRES_DISK_SIZE_GB || '20' }}
+  TF_VAR_managed_postgres_deletion_protection: ${{ vars.GCP_MANAGED_POSTGRES_DELETION_PROTECTION || 'true' }}
+  TF_VAR_db_name: ${{ vars.GCP_MINT_DB_NAME || 'mintdb' }}
+  TF_VAR_db_user: ${{ vars.GCP_MINT_DB_USER || 'mintuser' }}
+  TF_VAR_db_sslmode: ${{ vars.GCP_MINT_DB_SSLMODE || 'disable' }}
+  TF_VAR_db_password: ${{ secrets.GCP_MINT_DB_PASSWORD }}
+  TF_VAR_manage_project_services: ${{ vars.GCP_MANAGE_PROJECT_SERVICES || 'true' }}
+
+jobs:
+  release:
+    name: Build, Deploy, Attest
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow inputs
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            GCP_PROJECT_ID \
+            DOMAIN_NAME \
+            TF_STATE_BUCKET \
+            TF_VAR_tls_email \
+            TF_VAR_db_password; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$name is required"
+              missing=1
+            fi
+          done
+          if [[ -z "${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ]]; then
+            echo "::error::vars.GCP_WORKLOAD_IDENTITY_PROVIDER is required"
+            missing=1
+          fi
+          if [[ -z "${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}" ]]; then
+            echo "::error::vars.GCP_DEPLOY_SERVICE_ACCOUNT is required"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Static checks
+        run: |
+          set -euo pipefail
+          npm run lint
+          npm run build
+          node --check scripts/gcp-confidential-space-build.mjs
+          node --check scripts/gcp-confidential-space-attest.mjs
+          bash -n gcp-confidential-space/entrypoint.sh
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Build Confidential Space image
+        id: build_image
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          extra_args=()
+          if [[ -n "${CLOUD_BUILD_SOURCE_BUCKET:-}" ]]; then
+            extra_args+=(--bucket "$CLOUD_BUILD_SOURCE_BUCKET")
+          fi
+          node scripts/gcp-confidential-space-build.mjs \
+            --project "$GCP_PROJECT_ID" \
+            --location "$ARTIFACT_REGISTRY_LOCATION" \
+            --repository "$ARTIFACT_REGISTRY_REPOSITORY" \
+            --image "$ARTIFACT_REGISTRY_IMAGE" \
+            --tag "$GITHUB_SHA" \
+            "${extra_args[@]}"
+
+      - name: Configure Docker for Artifact Registry attestations
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev" --quiet
+
+      - name: Attest image build provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.build_image.outputs.image_subject_name }}
+          subject-digest: ${{ steps.build_image.outputs.image_digest }}
+          push-to-registry: true
+
+      - name: Terraform init
+        run: |
+          set -euo pipefail
+          cat > terraform/gcp/backend.tf <<'EOF'
+          terraform {
+            backend "gcs" {}
+          }
+          EOF
+          terraform -chdir=terraform/gcp init \
+            -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="prefix=${TF_STATE_PREFIX}"
+
+      - name: Terraform validate
+        run: |
+          set -euo pipefail
+          terraform -chdir=terraform/gcp fmt -check
+          terraform -chdir=terraform/gcp validate
+
+      - name: Terraform plan
+        env:
+          TF_VAR_confidential_space_image_reference: ${{ steps.build_image.outputs.confidential_space_image_reference }}
+          TF_VAR_confidential_space_image_digest: ${{ steps.build_image.outputs.confidential_space_image_digest }}
+        run: |
+          set -euo pipefail
+          terraform -chdir=terraform/gcp plan -input=false -out=tfplan
+
+      - name: Terraform apply
+        if: inputs.terraform_apply
+        run: terraform -chdir=terraform/gcp apply -input=false -auto-approve tfplan
+
+      - name: Restart Confidential Space instance
+        if: inputs.terraform_apply && inputs.restart_instance
+        run: |
+          set -euo pipefail
+          instance_name="ducat-mint-${ENVIRONMENT_NAME}-confidential-space"
+          gcloud compute instances stop "$instance_name" \
+            --project "$GCP_PROJECT_ID" \
+            --zone "$GCP_ZONE" \
+            --quiet
+          gcloud compute instances start "$instance_name" \
+            --project "$GCP_PROJECT_ID" \
+            --zone "$GCP_ZONE" \
+            --quiet
+
+      - name: Wait for mint health
+        if: inputs.terraform_apply
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if curl -fsS --max-time 5 "https://${DOMAIN_NAME}/health"; then
+              echo
+              exit 0
+            fi
+            echo "health check attempt ${attempt}/60 failed"
+            sleep 10
+          done
+          exit 1
+
+      - name: Generate deployment security attestation
+        if: inputs.terraform_apply
+        id: deploy_attestation
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          CONFIDENTIAL_SPACE_IMAGE_REFERENCE: ${{ steps.build_image.outputs.confidential_space_image_reference }}
+          CONFIDENTIAL_SPACE_IMAGE_DIGEST: ${{ steps.build_image.outputs.confidential_space_image_digest }}
+        run: |
+          set -euo pipefail
+          node scripts/gcp-confidential-space-attest.mjs \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --zone "$GCP_ZONE" \
+            --environment "$ENVIRONMENT_NAME" \
+            --domain "$DOMAIN_NAME" \
+            --output-dir attestations
+          cat attestations/gcp-confidential-space-deployment-attestation.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest deployment security predicate
+        if: inputs.terraform_apply
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ steps.build_image.outputs.image_subject_name }}
+          subject-digest: ${{ steps.build_image.outputs.image_digest }}
+          predicate-type: https://ducatprotocol.com/attestations/gcp-confidential-space-release/v1
+          predicate-path: attestations/gcp-confidential-space-deployment-attestation.json
+          push-to-registry: true
+
+      - name: Upload deployment attestation artifacts
+        if: inputs.terraform_apply
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-confidential-space-deployment-attestation
+          path: |
+            attestations/gcp-confidential-space-deployment-attestation.json
+            attestations/gcp-confidential-space-deployment-attestation.json.sha256
+            attestations/gcp-confidential-space-deployment-attestation.md
+          retention-days: 90
