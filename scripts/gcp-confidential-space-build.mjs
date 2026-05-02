@@ -27,6 +27,10 @@ const sourceObject = `confidential-space-source/${tag}-${Date.now()}.tar.gz`
 
 const token = await getAccessToken()
 
+await enableProjectService(token, projectId, 'artifactregistry.googleapis.com')
+await enableProjectService(token, projectId, 'cloudbuild.googleapis.com')
+await enableProjectService(token, projectId, 'storage.googleapis.com')
+
 await ensureArtifactRegistryRepository(token, { projectId, location, repository })
 await ensureBucket(token, { projectId, bucket, location })
 
@@ -199,6 +203,23 @@ async function ensureArtifactRegistryRepository(accessToken, { projectId, locati
     await waitForGoogleOperation(
       accessToken,
       `https://artifactregistry.googleapis.com/v1/${operation.name}`
+    )
+  }
+}
+
+async function enableProjectService(accessToken, projectId, serviceName) {
+  const operation = await googleFetch(
+    accessToken,
+    `https://serviceusage.googleapis.com/v1/projects/${projectId}/services/${serviceName}:enable`,
+    {
+      method: 'POST',
+      body: {},
+    }
+  )
+  if (operation?.name) {
+    await waitForGoogleOperation(
+      accessToken,
+      `https://serviceusage.googleapis.com/v1/${operation.name}`
     )
   }
 }
