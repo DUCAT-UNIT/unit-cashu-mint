@@ -163,9 +163,9 @@ export class MintService {
         )
 
         if (depositStatus.confirmed) {
+          const receivedAmount = depositStatus.amount ?? BigInt(quote.amount)
           // CRITICAL: Verify actual Runes amount received matches quote amount
           if (depositStatus.amount !== undefined) {
-            const receivedAmount = depositStatus.amount
             const expectedAmount = BigInt(quote.amount)
 
             if (receivedAmount !== expectedAmount) {
@@ -191,12 +191,21 @@ export class MintService {
           }
 
           // Update quote to PAID with txid/vout for later verification
-          await this.quoteRepo.updateMintQuoteState(
-            quoteId,
-            'PAID',
-            depositStatus.txid,
-            depositStatus.vout
-          )
+          const claimed = await this.claimDepositForQuote(quote, depositStatus, receivedAmount)
+          if (!claimed) {
+            logger.warn(
+              { quoteId, txid: depositStatus.txid, vout: depositStatus.vout },
+              'Deposit already claimed by another quote'
+            )
+            return {
+              quote: quote.id,
+              request: quote.request,
+              state: 'UNPAID',
+              expiry: quote.expiry,
+              amount: quote.amount,
+              unit: quote.unit,
+            }
+          }
           quote.state = 'PAID'
           notificationBus.publish('bolt11_mint_quote', {
             quote: quote.id,
@@ -325,6 +334,15 @@ export class MintService {
         { quoteId, amount: receivedAmount.toString(), confirmations: depositStatus.confirmations },
         'Deposit verified: amount matches and has required confirmations'
       )
+
+      const claimed = await this.claimDepositForQuote(quote, depositStatus, receivedAmount)
+      if (!claimed) {
+        logger.error(
+          { quoteId, txid: depositStatus.txid, vout: depositStatus.vout },
+          'SECURITY: Deposit already claimed by another quote - refusing to mint'
+        )
+        throw new Error('Deposit already claimed by another quote')
+      }
     } else {
       // If amount is undefined, deposit wasn't found at all
       logger.error({ quoteId }, 'SECURITY: Deposit not found on-chain - refusing to mint')
@@ -333,7 +351,6 @@ export class MintService {
 
     // Update quote to PAID if not already (idempotent)
     if (quote.state !== 'PAID') {
-      await this.quoteRepo.updateMintQuoteState(quoteId, 'PAID')
       logger.info(
         { quoteId, txid: depositStatus.txid, confirmations: depositStatus.confirmations },
         'Quote marked as PAID'
@@ -350,6 +367,8 @@ export class MintService {
     if (totalOutput !== quote.amount) {
       throw new AmountMismatchError(quote.amount, totalOutput)
     }
+
+    await this.ensureOutputsUseUnit(outputs, quote.unit)
 
     // 6. Sign blinded messages ONLY after deposit confirmed
     const signatures = await this.mintCrypto.signBlindedMessages(outputs)
@@ -399,19 +418,30 @@ export class MintService {
 
     try {
       const depositStatus = await backend.checkDeposit(quoteId, quote.request, true)
-      const amountPaid = depositStatus.amount ? Number(depositStatus.amount) : quote.amount_paid
+      if (depositStatus.confirmed && depositStatus.amount !== undefined) {
+        if (depositStatus.txid && depositStatus.vout !== undefined) {
+          const claimed = await this.claimDepositForQuote(quote, depositStatus, depositStatus.amount)
+          if (claimed) {
+            const updatedQuote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
+            quote.amount_paid = updatedQuote.amount_paid
+            quote.amount_issued = updatedQuote.amount_issued
+            quote.state = updatedQuote.state
+            quote.txid = updatedQuote.txid
+            quote.vout = updatedQuote.vout
+          }
+        } else {
+          const amountPaid = Number(depositStatus.amount)
+          await this.quoteRepo.updateMintQuotePayment(
+            quoteId,
+            amountPaid,
+            depositStatus.txid,
+            depositStatus.vout
+          )
 
-      if (amountPaid > quote.amount_paid) {
-        await this.quoteRepo.updateMintQuotePayment(
-          quoteId,
-          amountPaid,
-          depositStatus.txid,
-          depositStatus.vout
-        )
-
-        quote.amount_paid = amountPaid
-        quote.txid = depositStatus.txid
-        quote.vout = depositStatus.vout
+          quote.amount_paid = amountPaid
+          quote.txid = depositStatus.txid
+          quote.vout = depositStatus.vout
+        }
       }
     } catch (error) {
       logger.warn({ error, quoteId }, 'Failed to check onchain mint quote status')
@@ -442,6 +472,49 @@ export class MintService {
       amount_paid: quote.amount_paid,
       amount_issued: quote.amount_issued,
     }
+  }
+
+  private async claimDepositForQuote(
+    quote: {
+      id: string
+      method: string
+      unit: string
+    },
+    depositStatus: {
+      amount?: bigint
+      txid?: string
+      vout?: number
+    },
+    amount: bigint
+  ): Promise<boolean> {
+    if (!depositStatus.txid || depositStatus.vout === undefined) {
+      if (quote.method === 'onchain') {
+        await this.quoteRepo.updateMintQuotePayment(
+          quote.id,
+          Number(amount),
+          depositStatus.txid,
+          depositStatus.vout
+        )
+      } else {
+        await this.quoteRepo.updateMintQuoteState(
+          quote.id,
+          'PAID',
+          depositStatus.txid,
+          depositStatus.vout
+        )
+      }
+      return true
+    }
+
+    return this.quoteRepo.claimMintDeposit({
+      quoteId: quote.id,
+      method: quote.method,
+      unit: quote.unit,
+      amount,
+      txid: depositStatus.txid,
+      vout: depositStatus.vout,
+      creditMode: quote.method === 'onchain' ? 'increment-paid' : 'set-paid',
+    })
   }
 
   private async ensureKeyset(runeId: string, unit: string): Promise<void> {

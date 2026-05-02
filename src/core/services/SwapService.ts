@@ -23,6 +23,7 @@ export class SwapService {
    */
   async swap(inputs: Proof[], outputs: BlindedMessage[]): Promise<{ signatures: BlindSignature[] }> {
     // 1. Verify input amounts match output amounts
+    const unit = await this.mintCrypto.ensureProofsAndOutputsUseSingleUnit(inputs, outputs)
     const inputAmount = this.mintCrypto.sumProofs(inputs)
     const inputFees = await this.mintCrypto.calculateInputFees(inputs)
     const outputAmount = outputs.reduce((sum, o) => sum + o.amount, 0)
@@ -35,6 +36,7 @@ export class SwapService {
         inputAmount,
         inputFees,
         outputAmount,
+        unit,
         inputAmounts: inputs.map(p => p.amount),
         outputAmounts: outputs.map(o => o.amount)
       },

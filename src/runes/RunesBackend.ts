@@ -112,6 +112,7 @@ export class RunesBackend implements IPaymentBackend {
 
       // Check if we've already recorded this deposit in the database
       const existingDeposit = await this.utxoManager.getUnspentUtxos(this.runeId)
+      const claimedDeposits = await this.utxoManager.getClaimedDepositMap()
 
       // Get address data from Ord to check for outputs
       const ordData = await this.ordClient.getAddressOutputs(depositAddress)
@@ -152,6 +153,11 @@ export class RunesBackend implements IPaymentBackend {
         for (const output of ordData.outputs) {
           const [txid, voutStr] = output.split(':')
           const vout = parseInt(voutStr, 10)
+          const claimedByQuote = claimedDeposits.get(`${txid}:${vout}`)
+          if (claimedByQuote && claimedByQuote !== quoteId) {
+            logger.debug({ txid, vout, claimedByQuote, quoteId }, 'Skipping claimed deposit')
+            continue
+          }
 
           // Get UTXO details from Ord
           const utxoDetails = await this.ordClient.getOutput(txid, vout)
@@ -203,6 +209,11 @@ export class RunesBackend implements IPaymentBackend {
       for (const output of ordData.outputs) {
         const [txid, voutStr] = output.split(':')
         const vout = parseInt(voutStr, 10)
+        const claimedByQuote = claimedDeposits.get(`${txid}:${vout}`)
+        if (claimedByQuote && claimedByQuote !== quoteId) {
+          logger.debug({ txid, vout, claimedByQuote, quoteId }, 'Skipping claimed deposit')
+          continue
+        }
 
         // Check if this UTXO is already tracked
         const isAlreadyTracked = existingDeposit.some(

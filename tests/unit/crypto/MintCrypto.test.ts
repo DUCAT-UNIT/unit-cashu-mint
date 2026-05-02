@@ -137,6 +137,22 @@ describe('MintCrypto', () => {
     })
   })
 
+  describe('unit checks', () => {
+    it('rejects outputs that use a different unit than the input proofs', async () => {
+      const unitKeyset = await keyManager.generateKeyset('1527352:1', 'unit')
+
+      await expect(
+        mintCrypto.ensureProofsAndOutputsUseSingleUnit(
+          [{ id: keysetId }],
+          [{ id: unitKeyset.id }]
+        )
+      ).rejects.toMatchObject({
+        code: 13002,
+        message: 'Keyset unit mismatch',
+      })
+    })
+  })
+
   // Note: Full proof verification test would require proper blinding/unblinding
   // which is done by the client. We test the crypto primitives work correctly.
 })

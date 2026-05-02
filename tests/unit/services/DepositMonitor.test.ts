@@ -107,6 +107,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1ptest123',
         state: 'UNPAID' as MintQuoteState,
         expiry: Math.floor(now / 1000) + 600, // expiry is in seconds
@@ -115,7 +116,7 @@ describe('DepositMonitor', () => {
 
       // Mock the repo to return our pending quote
       vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([mockQuote])
-      const updateSpy = vi.spyOn(quoteRepo, 'updateMintQuoteState').mockResolvedValue()
+      const claimSpy = vi.spyOn(quoteRepo, 'claimMintDeposit').mockResolvedValue(true)
 
       // Simulate a confirmed deposit
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -137,8 +138,16 @@ describe('DepositMonitor', () => {
       // Wait for the async check to complete (don't use fake timers)
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      // Verify the quote state was updated with txid and vout
-      expect(updateSpy).toHaveBeenCalledWith('quote1', 'PAID', 'deposit_txid', 0)
+      // Verify the UTXO was atomically claimed before the quote was credited.
+      expect(claimSpy).toHaveBeenCalledWith({
+        quoteId: 'quote1',
+        method: 'unit',
+        unit: 'sat',
+        amount: 100n,
+        txid: 'deposit_txid',
+        vout: 0,
+        creditMode: 'set-paid',
+      })
     })
 
     it('should not update quote if deposit not confirmed', async () => {
@@ -156,6 +165,7 @@ describe('DepositMonitor', () => {
 
       vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([mockQuote])
       const updateSpy = vi.spyOn(quoteRepo, 'updateMintQuoteState').mockResolvedValue()
+      const claimSpy = vi.spyOn(quoteRepo, 'claimMintDeposit').mockResolvedValue(true)
 
       // Return not confirmed
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -176,6 +186,7 @@ describe('DepositMonitor', () => {
 
       // Verify the quote state was NOT updated
       expect(updateSpy).not.toHaveBeenCalled()
+      expect(claimSpy).not.toHaveBeenCalled()
     })
 
     it('should filter out expired quotes', async () => {

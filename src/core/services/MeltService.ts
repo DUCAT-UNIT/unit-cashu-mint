@@ -231,6 +231,9 @@ export class MeltService {
       }
     }
 
+    await this.mintCrypto.ensureProofsUseUnit(inputs, quote.unit)
+    await this.mintCrypto.ensureOutputsUseUnit(outputs, quote.unit)
+
     // 3. Verify input amounts cover quote amount and advertised fee reserve.
     const inputAmount = this.mintCrypto.sumProofs(inputs)
     const inputFees = await this.mintCrypto.calculateInputFees(inputs)

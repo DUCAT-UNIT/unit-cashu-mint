@@ -114,6 +114,17 @@ export class UtxoManager {
     return new Set(result.rows.map((row) => `${row.txid}:${row.vout}`))
   }
 
+  async getClaimedDepositMap(): Promise<Map<string, string>> {
+    const result = await this.db.query<{ txid: string; vout: number; quote_id: string }>(
+      `
+      SELECT txid, vout, quote_id
+      FROM mint_deposits
+    `
+    )
+
+    return new Map(result.rows.map((row) => [`${row.txid}:${row.vout}`, row.quote_id]))
+  }
+
   /**
    * Sync UTXOs from blockchain (detect new deposits)
    * This should be called periodically

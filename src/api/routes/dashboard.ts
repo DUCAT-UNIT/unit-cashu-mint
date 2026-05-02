@@ -1,4 +1,5 @@
-import { FastifyPluginAsync } from 'fastify'
+import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import { timingSafeEqual } from 'crypto'
 import { query } from '../../database/db.js'
 import { env } from '../../config/env.js'
 
@@ -51,8 +52,22 @@ interface DashboardStats {
 }
 
 export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
+  if (!env.ADMIN_ENABLED) {
+    fastify.log.info('Admin dashboard routes disabled')
+    return
+  }
+
+  const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isAdminRequest(request.headers.authorization)) {
+      return reply
+        .code(401)
+        .header('WWW-Authenticate', 'Bearer realm="admin"')
+        .send({ error: 'Unauthorized' })
+    }
+  }
+
   // Dashboard stats API
-  fastify.get('/admin/stats', async (_request, reply) => {
+  fastify.get('/admin/stats', { preHandler: requireAdmin }, async (_request, reply) => {
     try {
       const stats = await getDashboardStats()
       return reply.code(200).send(stats)
@@ -63,7 +78,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // UTXOs API
-  fastify.get('/admin/utxos', async (_request, reply) => {
+  fastify.get('/admin/utxos', { preHandler: requireAdmin }, async (_request, reply) => {
     try {
       const utxos = await getUtxos()
       return reply.code(200).send(utxos)
@@ -74,10 +89,20 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   // Dashboard HTML page
-  fastify.get('/dashboard', async (_request, reply) => {
+  fastify.get('/dashboard', { preHandler: requireAdmin }, async (_request, reply) => {
     reply.type('text/html')
     return reply.send(getDashboardHTML())
   })
+}
+
+function isAdminRequest(authorization?: string): boolean {
+  if (!env.ADMIN_TOKEN || !authorization?.startsWith('Bearer ')) {
+    return false
+  }
+
+  const provided = Buffer.from(authorization.slice('Bearer '.length))
+  const expected = Buffer.from(env.ADMIN_TOKEN)
+  return provided.length === expected.length && timingSafeEqual(provided, expected)
 }
 
 interface UtxoRecord {

@@ -104,6 +104,8 @@ describe('MeltService', () => {
     } as unknown as ProofRepository
     const mintCrypto = {
       sumProofs: vi.fn().mockReturnValue(64),
+      ensureProofsUseUnit: vi.fn(),
+      ensureOutputsUseUnit: vi.fn(),
       calculateInputFees: vi.fn().mockResolvedValue(0),
       verifyProofsOrThrow: vi.fn(),
       hashSecret: vi.fn().mockReturnValue('02' + '11'.repeat(32)),
@@ -163,6 +165,8 @@ describe('MeltService', () => {
     } as unknown as ProofRepository
     const mintCrypto = {
       sumProofs: vi.fn().mockReturnValue(25),
+      ensureProofsUseUnit: vi.fn(),
+      ensureOutputsUseUnit: vi.fn(),
       calculateInputFees: vi.fn().mockResolvedValue(0),
       verifyProofsOrThrow: vi.fn(),
       hashSecret: vi.fn().mockReturnValue('02' + '11'.repeat(32)),
@@ -218,6 +222,8 @@ describe('MeltService', () => {
     } as unknown as ProofRepository
     const mintCrypto = {
       sumProofs: vi.fn().mockReturnValue(100),
+      ensureProofsUseUnit: vi.fn(),
+      ensureOutputsUseUnit: vi.fn(),
       calculateInputFees: vi.fn().mockResolvedValue(2),
       verifyProofsOrThrow: vi.fn(),
       hashSecret: vi.fn().mockReturnValue('02' + '11'.repeat(32)),
@@ -296,6 +302,8 @@ describe('MeltService', () => {
     } as unknown as ProofRepository
     const mintCrypto = {
       sumProofs: vi.fn(),
+      ensureProofsUseUnit: vi.fn(),
+      ensureOutputsUseUnit: vi.fn(),
       calculateInputFees: vi.fn(),
       verifyProofsOrThrow: vi.fn(),
       hashSecret: vi.fn(),

@@ -14,6 +14,11 @@ const envSchema = z
       .string()
       .transform((v) => v === 'true')
       .default('false'),
+    ADMIN_ENABLED: z
+      .string()
+      .transform((v) => v === 'true')
+      .default('false'),
+    ADMIN_TOKEN: z.string().optional(),
 
     DATABASE_URL: z.string(),
     REDIS_URL: z.string().optional(),
@@ -116,6 +121,14 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['LIGHTNING_BACKEND'],
         message: 'LIGHTNING_BACKEND=fake is only allowed outside production',
+      })
+    }
+
+    if (value.ADMIN_ENABLED && !value.ADMIN_TOKEN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ADMIN_TOKEN'],
+        message: 'ADMIN_TOKEN is required when ADMIN_ENABLED=true',
       })
     }
   })

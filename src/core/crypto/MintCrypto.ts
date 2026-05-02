@@ -1,6 +1,11 @@
 import { KeyManager } from './KeyManager.js'
 import { BlindedMessage, BlindSignature, Proof } from '../../types/cashu.js'
-import { InvalidProofError } from '../../utils/errors.js'
+import {
+  InvalidProofError,
+  KeysetInactiveError,
+  KeysetUnitMismatchError,
+  MintError,
+} from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { Point } from '@noble/secp256k1'
 import { createHash } from 'crypto'
@@ -91,6 +96,51 @@ export class MintCrypto {
     includeDleq: boolean = true
   ): Promise<BlindSignature[]> {
     return Promise.all(messages.map((msg) => this.signBlindedMessage(msg, includeDleq)))
+  }
+
+  async getKeysetUnit(keysetId: string): Promise<string> {
+    const keyset = await this.keyManager.getPublicKeys(keysetId)
+    if (!keyset.active) {
+      throw new KeysetInactiveError(keysetId)
+    }
+
+    return keyset.unit
+  }
+
+  async ensureProofsUseUnit(proofs: Array<Pick<Proof, 'id'>>, unit: string): Promise<void> {
+    for (const proof of proofs) {
+      const keysetUnit = await this.getKeysetUnit(proof.id)
+      if (keysetUnit !== unit) {
+        throw new KeysetUnitMismatchError(unit, keysetUnit, proof.id)
+      }
+    }
+  }
+
+  async ensureOutputsUseUnit(
+    outputs: Array<Pick<BlindedMessage, 'id'>>,
+    unit: string
+  ): Promise<void> {
+    for (const output of outputs) {
+      const keysetUnit = await this.getKeysetUnit(output.id)
+      if (keysetUnit !== unit) {
+        throw new KeysetUnitMismatchError(unit, keysetUnit, output.id)
+      }
+    }
+  }
+
+  async ensureProofsAndOutputsUseSingleUnit(
+    proofs: Array<Pick<Proof, 'id'>>,
+    outputs: Array<Pick<BlindedMessage, 'id'>>
+  ): Promise<string> {
+    if (proofs.length === 0) {
+      throw new MintError('Swap requires input proofs', 11002, 'inputs=0')
+    }
+
+    const unit = await this.getKeysetUnit(proofs[0].id)
+    await this.ensureProofsUseUnit(proofs, unit)
+    await this.ensureOutputsUseUnit(outputs, unit)
+
+    return unit
   }
 
   /**

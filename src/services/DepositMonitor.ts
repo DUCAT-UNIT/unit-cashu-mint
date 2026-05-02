@@ -129,13 +129,25 @@ export class DepositMonitor {
           )
 
           if (depositStatus.confirmed) {
-            if (quote.method === 'onchain' && depositStatus.amount !== undefined) {
-              await this.quoteRepo.updateMintQuotePayment(
-                quote.id,
-                Number(depositStatus.amount),
-                depositStatus.txid,
-                depositStatus.vout
-              )
+            const amount = depositStatus.amount ?? BigInt(quote.amount)
+            if (depositStatus.txid && depositStatus.vout !== undefined) {
+              const claimed = await this.quoteRepo.claimMintDeposit({
+                quoteId: quote.id,
+                method: quote.method,
+                unit: quote.unit,
+                amount,
+                txid: depositStatus.txid,
+                vout: depositStatus.vout,
+                creditMode: quote.method === 'onchain' ? 'increment-paid' : 'set-paid',
+              })
+
+              if (!claimed) {
+                logger.warn(
+                  { quoteId: quote.id, txid: depositStatus.txid, vout: depositStatus.vout },
+                  'Deposit already claimed by another quote'
+                )
+                continue
+              }
             } else {
               await this.quoteRepo.updateMintQuoteState(
                 quote.id,

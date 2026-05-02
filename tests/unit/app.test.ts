@@ -106,6 +106,23 @@ describe('App Factory', () => {
     expect(response.headers['access-control-allow-origin']).toBe('https://wallet.cashu.me')
   })
 
+  it('should not expose admin routes unless explicitly enabled', async () => {
+    const { createServer } = await import('../../src/app.js')
+    server = await createServer()
+
+    const statsResponse = await server.inject({
+      method: 'GET',
+      url: '/admin/stats',
+    })
+    const dashboardResponse = await server.inject({
+      method: 'GET',
+      url: '/dashboard',
+    })
+
+    expect(statsResponse.statusCode).toBe(404)
+    expect(dashboardResponse.statusCode).toBe(404)
+  })
+
   it('should have error handler', async () => {
     const { createServer } = await import('../../src/app.js')
     server = await createServer()

@@ -104,6 +104,12 @@ export class KeysetInactiveError extends MintError {
   }
 }
 
+export class KeysetUnitMismatchError extends MintError {
+  constructor(expected: string, actual: string, keysetId: string) {
+    super('Keyset unit mismatch', 13002, `expected=${expected}, actual=${actual}, id=${keysetId}`)
+  }
+}
+
 /**
  * Runes-related errors
  */

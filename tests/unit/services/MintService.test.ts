@@ -81,6 +81,7 @@ describe('MintService', () => {
       findMintQuoteByIdOrThrow: vi.fn(),
       updateMintQuoteState: vi.fn(),
       updateMintQuotePayment: vi.fn(),
+      claimMintDeposit: vi.fn().mockResolvedValue(true),
       incrementMintQuoteIssued: vi.fn(),
     } as unknown as QuoteRepository
 
@@ -312,7 +313,38 @@ describe('MintService', () => {
       const result = await mintService.mintTokens(quoteId, outputs)
 
       expect(result.signatures).toHaveLength(1)
+      expect(mockQuoteRepo.claimMintDeposit).toHaveBeenCalledWith({
+        quoteId,
+        method: 'unit',
+        unit: 'unit',
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        creditMode: 'set-paid',
+      })
       expect(mockQuoteRepo.updateMintQuoteState).toHaveBeenCalledWith(quoteId, 'ISSUED')
+    })
+
+    it('should REJECT when a deposit was already claimed by another quote', async () => {
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
+        id: quoteId,
+        amount: 500,
+        state: 'PAID',
+      }))
+      vi.mocked(mockQuoteRepo.claimMintDeposit).mockResolvedValue(false)
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        confirmations: 6,
+      })
+
+      const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
+
+      await expect(mintService.mintTokens(quoteId, outputs))
+        .rejects.toThrow('Deposit already claimed by another quote')
+      expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
     })
 
     it('should REJECT when deposit amount is GREATER than quote amount', async () => {
@@ -431,6 +463,28 @@ describe('MintService', () => {
         .rejects.toThrow(AmountMismatchError)
     })
 
+    it('should REJECT when output keysets do not match the quote unit', async () => {
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
+        id: quoteId,
+        amount: 500,
+        state: 'PAID',
+      }))
+
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        confirmations: 6,
+      })
+
+      const outputs = [{ id: 'other-unit-keyset', amount: 500, B_: '02xyz' }]
+
+      await expect(mintService.mintTokens(quoteId, outputs))
+        .rejects.toThrow('Output keyset does not match quote unit')
+      expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
+    })
+
     it('should REJECT already issued quote', async () => {
       vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
@@ -494,7 +548,15 @@ describe('MintService', () => {
       const result = await mintService.getMintQuote(quoteId) as MintQuoteResponse
 
       expect(result.state).toBe('PAID')
-      expect(mockQuoteRepo.updateMintQuoteState).toHaveBeenCalledWith(quoteId, 'PAID', 'deposit_txid', 0)
+      expect(mockQuoteRepo.claimMintDeposit).toHaveBeenCalledWith({
+        quoteId,
+        method: 'unit',
+        unit: 'unit',
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        creditMode: 'set-paid',
+      })
     })
   })
 })

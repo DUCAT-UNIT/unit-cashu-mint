@@ -1,4 +1,4 @@
-import { query } from '../db.js'
+import { query, transaction } from '../db.js'
 import {
   MintQuote,
   MintQuoteRow,
@@ -91,6 +91,13 @@ export class QuoteRepository {
     `,
       [state, paid_at ?? null, txid ?? null, vout ?? null, id]
     )
+
+    if (state === 'ISSUED') {
+      await query('UPDATE mint_deposits SET issued_at = COALESCE(issued_at, $1) WHERE quote_id = $2', [
+        Date.now(),
+        id,
+      ])
+    }
   }
 
   async updateMintQuotePayment(
@@ -111,6 +118,82 @@ export class QuoteRepository {
     `,
       [amountPaid, txid ?? null, vout ?? null, Date.now(), id]
     )
+  }
+
+  async claimMintDeposit(params: {
+    quoteId: string
+    method: string
+    unit: string
+    amount: bigint | number
+    txid: string
+    vout: number
+    creditMode: 'set-paid' | 'increment-paid'
+  }): Promise<boolean> {
+    const amount = params.amount.toString()
+    const claimedAt = Date.now()
+
+    return transaction(async (client) => {
+      const claimResult = await client.query<{ quote_id: string }>(
+        `
+        INSERT INTO mint_deposits (quote_id, method, unit, txid, vout, amount, claimed_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (txid, vout) DO NOTHING
+        RETURNING quote_id
+      `,
+        [
+          params.quoteId,
+          params.method,
+          params.unit,
+          params.txid,
+          params.vout,
+          amount,
+          claimedAt,
+        ]
+      )
+
+      if (!claimResult.rowCount) {
+        const owner = await client.query<{ quote_id: string }>(
+          'SELECT quote_id FROM mint_deposits WHERE txid = $1 AND vout = $2',
+          [params.txid, params.vout]
+        )
+
+        if (owner.rows[0]?.quote_id !== params.quoteId) {
+          return false
+        }
+
+        return true
+      }
+
+      if (params.creditMode === 'increment-paid') {
+        await client.query(
+          `
+          UPDATE mint_quotes
+          SET amount_paid = amount_paid + $1,
+              txid = COALESCE(txid, $2),
+              vout = COALESCE(vout, $3),
+              state = CASE WHEN amount_paid + $1 > amount_issued THEN 'PAID' ELSE state END,
+              paid_at = CASE WHEN amount_paid + $1 > amount_issued THEN COALESCE(paid_at, $4) ELSE paid_at END
+          WHERE id = $5
+        `,
+          [amount, params.txid, params.vout, claimedAt, params.quoteId]
+        )
+      } else {
+        await client.query(
+          `
+          UPDATE mint_quotes
+          SET amount_paid = GREATEST(amount_paid, $1),
+              state = CASE WHEN state = 'ISSUED' THEN state ELSE 'PAID' END,
+              paid_at = COALESCE(paid_at, $2),
+              txid = COALESCE(txid, $3),
+              vout = COALESCE(vout, $4)
+          WHERE id = $5
+        `,
+          [amount, claimedAt, params.txid, params.vout, params.quoteId]
+        )
+      }
+
+      return true
+    })
   }
 
   async incrementMintQuoteIssued(id: string, amount: number): Promise<void> {
