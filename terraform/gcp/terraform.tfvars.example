@@ -11,6 +11,17 @@ tls_email   = "ops@yourdomain.com"
 repo_url = "https://github.com/your-org/mint-server.git"
 repo_ref = "main"
 
+# Use "confidential-vm" for the current startup-script deployment.
+# Use "confidential-space" for attestation-gated Secret Manager and KMS access
+# bound to the workload container digest.
+deployment_mode = "confidential-vm"
+
+# Required only when deployment_mode = "confidential-space".
+# Build and push gcp-confidential-space/Dockerfile, then pin the image by digest.
+confidential_space_image_reference = "us-docker.pkg.dev/your-gcp-project-id/ducat-mint/mint-server@sha256:..."
+confidential_space_image_digest    = "sha256:..."
+confidential_space_image_family    = "confidential-space"
+
 # N2D uses AMD SEV. For stronger hardware-backed attestation, choose a zone and
 # machine family that supports SEV_SNP or TDX and set confidential_instance_type.
 machine_type               = "n2d-standard-4"

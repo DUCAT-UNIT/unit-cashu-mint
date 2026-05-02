@@ -1,19 +1,16 @@
-# GCP Confidential VM Deployment
+# GCP Confidential Deployment
 
-This deploys the mint on a Google Cloud Confidential VM. It is the closest
-GCP equivalent to the current AWS Nitro deployment for a single VM, but the
-security model is different:
+This module supports two GCP deployment modes:
 
-- AWS Nitro Enclaves isolate the mint from the parent EC2 instance.
-- GCP Confidential VM encrypts the whole VM memory from the cloud operator and
-  host, but the guest OS remains inside the trust boundary.
-- This deployment has a startup attestation gate: it refuses to fetch Secret
-  Manager payloads unless Compute Engine reports Confidential VM and Shielded VM
-  controls enabled for the instance.
-- True Nitro-style KMS release on GCP requires Confidential Space, a container
-  image digest, and Workload Identity Federation IAM bindings. That is the
-  closer match for attestation-gated secret release because KMS access is granted
-  to attested workload claims instead of the VM service account.
+- `deployment_mode = "confidential-vm"` keeps the current single VM startup
+  script path. It uses a Confidential VM, encrypted boot disk, Secret Manager,
+  app-level Cloud KMS encryption, and a startup gate that refuses to fetch
+  secrets unless the instance reports Confidential VM and Shielded VM controls.
+- `deployment_mode = "confidential-space"` is the production-grade path for
+  Nitro-style attestation-gated release. The mint runs as a single Confidential
+  Space container. Secret Manager access and Cloud KMS encrypt/decrypt are
+  granted to a Workload Identity Federation principal bound to the attested
+  container image digest, not to the VM service account.
 
 ## What Terraform Creates
 
@@ -23,8 +20,11 @@ security model is different:
 - Cloud KMS key for encrypted boot disk and application keyset encryption
 - Cloud KMS key for Secret Manager CMEK
 - IAM wiring for the Secret Manager secret and KMS keys
-- Startup automation that installs Postgres, Node.js 22, Caddy, the mint app,
-  migrations, and a systemd service
+- In `confidential-vm` mode: startup automation that installs Postgres, Node.js
+  22, Caddy, the mint app, migrations, and a systemd service
+- In `confidential-space` mode: a Workload Identity Pool/provider for Google
+  Cloud Attestation, principalSet IAM bindings scoped to the expected image
+  digest, and a Confidential Space VM that launches the attested container
 
 ## Bootstrap
 
@@ -34,7 +34,9 @@ cp terraform.tfvars.example terraform.tfvars
 ```
 
 Edit `terraform.tfvars`, then create the secret payload before first boot.
-Use a CMEK-protected secret in production:
+Use a CMEK-protected secret in production. In `confidential-space` mode this
+secret is fetched with a federated token issued only after Confidential Space
+attestation passes:
 
 ```bash
 gcloud secrets create ducat-mint-env \
@@ -77,17 +79,26 @@ CORS_ORIGINS=https://cashu.me
 ```
 
 On GCP, startup appends the runtime encryption settings below after reading the
-secret, so Cloud KMS is authoritative even if the secret still contains
-`KEY_ENCRYPTION_MODE=local` for local development:
+secret in `confidential-vm` mode, so Cloud KMS is authoritative even if the
+secret still contains `KEY_ENCRYPTION_MODE=local` for local development:
 
 ```dotenv
 KEY_ENCRYPTION_MODE=gcp-kms
 KMS_KEY_NAME=projects/.../locations/.../keyRings/.../cryptoKeys/...
 ```
 
+In `confidential-space` mode the attested container sets:
+
+```dotenv
+KEY_ENCRYPTION_MODE=gcp-confidential-space-kms
+KMS_KEY_NAME=projects/.../locations/.../keyRings/.../cryptoKeys/...
+GCP_WORKLOAD_IDENTITY_AUDIENCE=//iam.googleapis.com/projects/.../locations/global/workloadIdentityPools/.../providers/...
+```
+
 `ENCRYPTION_KEY` should remain available during migration because the app can
 still read legacy local AES-CBC keyset rows, but newly written keyset private
-keys are encrypted with Cloud KMS when `KEY_ENCRYPTION_MODE=gcp-kms`.
+keys are encrypted with Cloud KMS when `KEY_ENCRYPTION_MODE` uses either GCP
+KMS mode.
 
 Then apply:
 
@@ -99,6 +110,32 @@ terraform apply
 
 Point the DNS A record for `domain_name` to the `public_ip` output before
 Caddy requests the certificate.
+
+## Confidential Space Build
+
+Build and push the workload container from the repository root:
+
+```bash
+IMAGE="us-docker.pkg.dev/$PROJECT_ID/ducat-mint/mint-server:$(git rev-parse --short HEAD)"
+docker build -f gcp-confidential-space/Dockerfile -t "$IMAGE" .
+docker push "$IMAGE"
+gcloud artifacts docker images describe "$IMAGE" \
+  --format='value(image_summary.digest)'
+```
+
+Set these in `terraform.tfvars`:
+
+```hcl
+deployment_mode = "confidential-space"
+
+confidential_space_image_reference = "us-docker.pkg.dev/PROJECT_ID/ducat-mint/mint-server@sha256:..."
+confidential_space_image_digest    = "sha256:..."
+confidential_space_image_family    = "confidential-space"
+```
+
+The digest is part of the Workload Identity Provider attestation condition and
+the KMS/Secret Manager IAM principalSet. A new container digest intentionally
+requires a Terraform update before the new workload can decrypt.
 
 ## Verify
 
@@ -149,8 +186,9 @@ sudo systemctl restart ducat-mint
   `secret_manager_cmek_key_name` key.
 - Keyset private keys stored in Postgres are encrypted by the app with
   `app_kms_key_name` when running on GCP.
-- The startup attestation gate blocks accidental non-Confidential-VM boots
-  before secrets are fetched, but root inside the guest remains trusted.
-- For production-grade Nitro-style KMS attestation gating on GCP, move the
-  signing workload into Confidential Space and grant KMS decrypt to the
-  attested workload identity, usually bound to the container image digest.
+- In `confidential-vm` mode, root inside the guest remains trusted.
+- In `confidential-space` mode, KMS and Secret Manager are not granted to the VM
+  service account. Access is granted to the federated Confidential Space
+  principal with these attestation conditions: expected container digest,
+  expected runtime service account, `CONFIDENTIAL_SPACE`, stable image support,
+  and production debug status.

@@ -46,8 +46,13 @@ const envSchema = z
     LNBITS_ADMIN_KEY: z.string().optional(),
     LIGHTNING_FEE_RESERVE: z.string().default('2'), // sats
 
-    KEY_ENCRYPTION_MODE: z.enum(['local', 'gcp-kms']).default('local'),
+    KEY_ENCRYPTION_MODE: z.enum(['local', 'gcp-kms', 'gcp-confidential-space-kms']).default('local'),
     KMS_KEY_NAME: z.string().optional(),
+    GCP_WORKLOAD_IDENTITY_AUDIENCE: z.string().optional(),
+    GCP_ATTESTATION_TOKEN_AUDIENCE: z.string().default('https://sts.googleapis.com'),
+    CONFIDENTIAL_SPACE_TOKEN_SOCKET: z
+      .string()
+      .default('/run/container_launcher/teeserver.sock'),
     GOOGLE_OAUTH_ACCESS_TOKEN: z.string().optional(),
     ENCRYPTION_KEY: z.string().length(64).optional(),
     JWT_SECRET: z.string(),
@@ -81,11 +86,28 @@ const envSchema = z
       })
     }
 
-    if (value.KEY_ENCRYPTION_MODE === 'gcp-kms' && !value.KMS_KEY_NAME) {
+    if (
+      (value.KEY_ENCRYPTION_MODE === 'gcp-kms' ||
+        value.KEY_ENCRYPTION_MODE === 'gcp-confidential-space-kms') &&
+      !value.KMS_KEY_NAME
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['KMS_KEY_NAME'],
-        message: 'KMS_KEY_NAME is required when KEY_ENCRYPTION_MODE=gcp-kms',
+        message: 'KMS_KEY_NAME is required when KEY_ENCRYPTION_MODE uses Cloud KMS',
+      })
+    }
+
+    if (
+      value.KEY_ENCRYPTION_MODE === 'gcp-confidential-space-kms' &&
+      !value.GCP_WORKLOAD_IDENTITY_AUDIENCE &&
+      !value.GOOGLE_OAUTH_ACCESS_TOKEN
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GCP_WORKLOAD_IDENTITY_AUDIENCE'],
+        message:
+          'GCP_WORKLOAD_IDENTITY_AUDIENCE is required when KEY_ENCRYPTION_MODE=gcp-confidential-space-kms',
       })
     }
 

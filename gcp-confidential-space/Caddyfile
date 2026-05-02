@@ -1,0 +1,8 @@
+{
+  email {$TLS_EMAIL}
+  storage file_system /data/caddy
+}
+
+{$DOMAIN_NAME} {
+  reverse_proxy 127.0.0.1:{$PORT}
+}
