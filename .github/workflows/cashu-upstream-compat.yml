@@ -48,6 +48,8 @@ jobs:
       JWT_SECRET: upstream-compat-jwt-secret
       CORS_ORIGINS: "*"
       LOG_LEVEL: warn
+      RATE_LIMIT_MAX: "100000"
+      RATE_LIMIT_WINDOW: "60000"
 
     steps:
       - uses: actions/checkout@v4
@@ -121,6 +123,8 @@ jobs:
       JWT_SECRET: upstream-compat-jwt-secret
       CORS_ORIGINS: "*"
       LOG_LEVEL: warn
+      RATE_LIMIT_MAX: "100000"
+      RATE_LIMIT_WINDOW: "60000"
 
     steps:
       - uses: actions/checkout@v4
@@ -131,6 +135,9 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install CDK build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - run: npm ci
       - run: npm run build
