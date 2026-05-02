@@ -216,7 +216,7 @@ async function enableProjectService(accessToken, projectId, serviceName) {
       body: {},
     }
   )
-  if (operation?.name) {
+  if (operation?.name && !operation.done && !operation.name.includes('DONE_OPERATION')) {
     await waitForGoogleOperation(
       accessToken,
       `https://serviceusage.googleapis.com/v1/${operation.name}`
