@@ -207,7 +207,8 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable --now ducat-mint
+  systemctl enable ducat-mint
+  systemctl restart ducat-mint
 }
 
 configure_proxy() {
