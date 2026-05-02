@@ -17,6 +17,10 @@ const DENOMINATIONS = [
 
 export const DEFAULT_INPUT_FEE_PPK = 0
 
+function configuredInputFeePpk(): number {
+  return env.MINT_INPUT_FEE_PPK
+}
+
 export function deriveMintKeysetId(
   publicKeys: Record<number, string>,
   unit: string,
@@ -70,7 +74,7 @@ export class KeyManager {
       public_keys[amount] = Buffer.from(publicKey).toString('hex')
     }
 
-    const inputFeePpk = DEFAULT_INPUT_FEE_PPK
+    const inputFeePpk = configuredInputFeePpk()
     const id = deriveMintKeysetId(public_keys, unit, inputFeePpk)
 
     // Encrypt private keys before storing
@@ -227,14 +231,15 @@ export class KeyManager {
       return null
     }
 
-    if ((keyset.input_fee_ppk ?? 0) !== DEFAULT_INPUT_FEE_PPK) {
+    const inputFeePpk = configuredInputFeePpk()
+    if ((keyset.input_fee_ppk ?? 0) !== inputFeePpk) {
       logger.info(
         {
           keysetId: keyset.id,
           runeId,
           unit,
           inputFeePpk: keyset.input_fee_ppk ?? 0,
-          targetInputFeePpk: DEFAULT_INPUT_FEE_PPK,
+          targetInputFeePpk: inputFeePpk,
         },
         'Generating replacement keyset with protocol input fees'
       )

@@ -25,6 +25,7 @@ const envSchema = z
 
     MINT_SEED: z.string().length(64), // 32 bytes hex
     MINT_PUBKEY: z.string(),
+    MINT_INPUT_FEE_PPK: z.string().regex(/^\d+$/).default('0'), // NUT-02 input fee in parts per thousand
     MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
     MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
     MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
@@ -151,6 +152,7 @@ export const env = {
   MELT_CONFIRMATIONS: parseInt(parsed.data.MELT_CONFIRMATIONS),
   BTC_FEE_RATE: parseInt(parsed.data.BTC_FEE_RATE),
   LIGHTNING_FEE_RESERVE: parseInt(parsed.data.LIGHTNING_FEE_RESERVE),
+  MINT_INPUT_FEE_PPK: parseInt(parsed.data.MINT_INPUT_FEE_PPK, 10),
   SUPPORTED_UNITS_ARRAY: supportedUnits,
   SUPPORTS_BITCOIN: supportsBitcoin,
   SUPPORTS_LIGHTNING: supportsLightning,
