@@ -1,6 +1,18 @@
 name: GCP Confidential Space Release
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'migrations/**'
+      - 'gcp-confidential-space/**'
+      - 'scripts/gcp-confidential-space-*.mjs'
+      - 'terraform/gcp/**'
+      - 'package*.json'
+      - 'tsconfig.json'
+      - '.github/workflows/gcp-confidential-space-release.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -25,32 +37,31 @@ on:
         type: boolean
 
 concurrency:
-  group: gcp-confidential-space-${{ inputs.environment }}
+  group: gcp-confidential-space-${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
   cancel-in-progress: false
 
 permissions:
   contents: read
   id-token: write
   attestations: write
-  artifact-metadata: write
 
 env:
   NODE_VERSION: '22'
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
   GCP_ZONE: ${{ vars.GCP_ZONE || 'us-central1-a' }}
-  ENVIRONMENT_NAME: ${{ inputs.environment }}
+  ENVIRONMENT_NAME: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
   DOMAIN_NAME: ${{ inputs.domain_name || vars.GCP_MINT_DOMAIN_NAME }}
   ARTIFACT_REGISTRY_LOCATION: ${{ vars.GCP_ARTIFACT_REGISTRY_LOCATION || vars.GCP_REGION || 'us-central1' }}
   ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.GCP_ARTIFACT_REGISTRY_REPOSITORY || 'ducat-mint' }}
   ARTIFACT_REGISTRY_IMAGE: ${{ vars.GCP_ARTIFACT_REGISTRY_IMAGE || 'mint-server' }}
   CLOUD_BUILD_SOURCE_BUCKET: ${{ vars.GCP_CLOUD_BUILD_SOURCE_BUCKET }}
   TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET }}
-  TF_STATE_PREFIX: ${{ vars.GCP_TF_STATE_PREFIX || format('mint-server/{0}', inputs.environment) }}
+  TF_STATE_PREFIX: ${{ vars.GCP_TF_STATE_PREFIX || format('mint-server/{0}', inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev') }}
   TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
   TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
   TF_VAR_zone: ${{ vars.GCP_ZONE || 'us-central1-a' }}
-  TF_VAR_environment: ${{ inputs.environment }}
+  TF_VAR_environment: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
   TF_VAR_domain_name: ${{ inputs.domain_name || vars.GCP_MINT_DOMAIN_NAME }}
   TF_VAR_tls_email: ${{ vars.GCP_TLS_EMAIL }}
   TF_VAR_repo_url: ${{ github.server_url }}/${{ github.repository }}.git
@@ -86,7 +97,7 @@ jobs:
   release:
     name: Build, Deploy, Attest
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
 
     steps:
       - name: Checkout
@@ -179,6 +190,7 @@ jobs:
           subject-name: ${{ steps.build_image.outputs.image_subject_name }}
           subject-digest: ${{ steps.build_image.outputs.image_digest }}
           push-to-registry: true
+          create-storage-record: false
 
       - name: Terraform init
         run: |
@@ -208,11 +220,11 @@ jobs:
           terraform -chdir=terraform/gcp plan -input=false -out=tfplan
 
       - name: Terraform apply
-        if: inputs.terraform_apply
+        if: github.event_name == 'push' || inputs.terraform_apply == true
         run: terraform -chdir=terraform/gcp apply -input=false -auto-approve tfplan
 
       - name: Restart Confidential Space instance
-        if: inputs.terraform_apply && inputs.restart_instance
+        if: github.event_name == 'push' || (inputs.terraform_apply == true && inputs.restart_instance == true)
         run: |
           set -euo pipefail
           instance_name="ducat-mint-${ENVIRONMENT_NAME}-confidential-space"
@@ -226,7 +238,7 @@ jobs:
             --quiet
 
       - name: Wait for mint health
-        if: inputs.terraform_apply
+        if: github.event_name == 'push' || inputs.terraform_apply == true
         run: |
           set -euo pipefail
           for attempt in {1..60}; do
@@ -240,7 +252,7 @@ jobs:
           exit 1
 
       - name: Generate deployment security attestation
-        if: inputs.terraform_apply
+        if: github.event_name == 'push' || inputs.terraform_apply == true
         id: deploy_attestation
         env:
           GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
@@ -258,7 +270,7 @@ jobs:
           cat attestations/gcp-confidential-space-deployment-attestation.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Attest deployment security predicate
-        if: inputs.terraform_apply
+        if: github.event_name == 'push' || inputs.terraform_apply == true
         uses: actions/attest@v4
         with:
           subject-name: ${{ steps.build_image.outputs.image_subject_name }}
@@ -266,9 +278,10 @@ jobs:
           predicate-type: https://ducatprotocol.com/attestations/gcp-confidential-space-release/v1
           predicate-path: attestations/gcp-confidential-space-deployment-attestation.json
           push-to-registry: true
+          create-storage-record: false
 
       - name: Upload deployment attestation artifacts
-        if: inputs.terraform_apply
+        if: github.event_name == 'push' || inputs.terraform_apply == true
         uses: actions/upload-artifact@v4
         with:
           name: gcp-confidential-space-deployment-attestation

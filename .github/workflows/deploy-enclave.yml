@@ -10,17 +10,9 @@
 # Authentication: Uses OIDC (no stored credentials needed)
 # Requires: Initial Terraform apply to create OIDC provider
 
-name: Deploy Enclave
+name: Deploy Enclave (AWS Nitro Legacy)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'enclave/**'
-      - 'package*.json'
-      - '.github/workflows/deploy-enclave.yml'
   workflow_dispatch:
     inputs:
       first_boot:
@@ -31,11 +23,10 @@ on:
 
 env:
   NODE_VERSION: '22'
-  AWS_REGION: us-east-1
-  # These are set by Terraform output
-  AWS_ROLE_ARN: arn:aws:iam::160885263687:role/ducat-mint-github-actions
-  S3_BUCKET: ducat-mint-artifacts-160885263687
-  EC2_INSTANCE_ID: '' # Set after first Terraform apply
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+  S3_BUCKET: ${{ vars.AWS_S3_BUCKET }}
+  EC2_INSTANCE_ID: ${{ vars.AWS_EC2_INSTANCE_ID || '' }}
 
 # Required for OIDC authentication
 permissions:
@@ -98,6 +89,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate AWS deploy config
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in AWS_ROLE_ARN S3_BUCKET; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$name is required for the legacy AWS Nitro deploy workflow"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -199,10 +202,14 @@ jobs:
       - name: Get EC2 Instance ID
         id: ec2
         run: |
-          INSTANCE_ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=ducat-mint-enclave" "Name=instance-state-name,Values=running" \
-            --query "Reservations[0].Instances[0].InstanceId" \
-            --output text)
+          if [[ -n "${EC2_INSTANCE_ID:-}" ]]; then
+            INSTANCE_ID="$EC2_INSTANCE_ID"
+          else
+            INSTANCE_ID=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=ducat-mint-enclave" "Name=instance-state-name,Values=running" \
+              --query "Reservations[0].Instances[0].InstanceId" \
+              --output text)
+          fi
 
           if [[ "$INSTANCE_ID" == "None" ]] || [[ -z "$INSTANCE_ID" ]]; then
             echo "No running EC2 instance found with tag 'ducat-mint-enclave'"

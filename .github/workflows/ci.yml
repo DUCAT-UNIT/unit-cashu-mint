@@ -10,6 +10,25 @@ permissions:
   contents: read
 
 jobs:
+  workflow-lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.8/actionlint_1.7.8_linux_amd64.tar.gz \
+            -o /tmp/actionlint.tar.gz
+          mkdir -p /tmp/actionlint
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp/actionlint
+
+      - name: Lint workflows
+        run: /tmp/actionlint/actionlint
+
   test:
     name: Lint, Build, Test
     runs-on: ubuntu-latest
