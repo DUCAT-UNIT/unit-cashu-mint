@@ -4,13 +4,15 @@ import { P2PKService } from './P2PKService.js'
 import { Proof, BlindedMessage, BlindSignature } from '../../types/cashu.js'
 import { AmountMismatchError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
+import { SignatureRepository } from '../../database/repositories/SignatureRepository.js'
 
 export class SwapService {
   private p2pkService: P2PKService
 
   constructor(
     private mintCrypto: MintCrypto,
-    private proofRepo: ProofRepository
+    private proofRepo: ProofRepository,
+    private signatureRepo?: SignatureRepository
   ) {
     this.p2pkService = new P2PKService()
   }
@@ -43,21 +45,13 @@ export class SwapService {
     // 2. Verify all input proofs have valid signatures
     await this.mintCrypto.verifyProofsOrThrow(inputs)
 
-    // 2b. Verify P2PK spending conditions (NUT-11)
-    for (const input of inputs) {
-      if (this.p2pkService.isP2PKProof(input)) {
-        const isValid = this.p2pkService.verifyP2PKProof(input)
-        if (!isValid) {
-          const err: any = new Error(`P2PK witness verification failed - proof is locked to a public key and requires a valid signature witness`)
-          err.code = 'P2PK_VERIFICATION_FAILED'
-          throw err
-        }
-      }
-    }
-
-    // 2c. Verify SIG_ALL mode if applicable
-    if (!this.p2pkService.verifyP2PKProofsWithSigAll(inputs)) {
-      throw new Error('P2PK SIG_ALL verification failed')
+    // 2b. Verify P2PK spending conditions (NUT-11), including SIG_ALL.
+    if (!this.p2pkService.verifyP2PKProofs(inputs, outputs)) {
+      const err: any = new Error(
+        'P2PK witness verification failed - proof is locked to a public key and requires a valid signature witness'
+      )
+      err.code = 'P2PK_VERIFICATION_FAILED'
+      throw err
     }
 
     // 3. Hash secrets to Y values for database lookup
@@ -69,6 +63,7 @@ export class SwapService {
 
     // 5. Sign output blinded messages
     const signatures = await this.mintCrypto.signBlindedMessages(outputs)
+    await this.signatureRepo?.saveMany(outputs, signatures)
 
     logger.info(
       { transactionId, inputAmount, outputCount: signatures.length },

@@ -8,6 +8,8 @@ import { AmountMismatchError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
+import { notificationBus } from '../events/notifications.js'
+import { SignatureRepository } from '../../database/repositories/SignatureRepository.js'
 
 export class MeltService {
   private p2pkService: P2PKService
@@ -16,7 +18,8 @@ export class MeltService {
     private mintCrypto: MintCrypto,
     private quoteRepo: QuoteRepository,
     private proofRepo: ProofRepository,
-    private backendRegistry: BackendRegistry
+    private backendRegistry: BackendRegistry,
+    private signatureRepo?: SignatureRepository
   ) {
     this.p2pkService = new P2PKService()
   }
@@ -222,19 +225,9 @@ export class MeltService {
     // 4. Verify all input proofs have valid signatures
     await this.mintCrypto.verifyProofsOrThrow(inputs)
 
-    // 4b. Verify P2PK spending conditions (NUT-11)
-    for (const input of inputs) {
-      if (this.p2pkService.isP2PKProof(input)) {
-        const isValid = this.p2pkService.verifyP2PKProof(input)
-        if (!isValid) {
-          throw new Error(`P2PK witness verification failed for proof`)
-        }
-      }
-    }
-
-    // 4c. Verify SIG_ALL mode if applicable
-    if (!this.p2pkService.verifyP2PKProofsWithSigAll(inputs)) {
-      throw new Error('P2PK SIG_ALL verification failed')
+    // 4b. Verify P2PK spending conditions (NUT-11), including SIG_ALL melts.
+    if (!this.p2pkService.verifyP2PKProofs(inputs, outputs, quoteId)) {
+      throw new Error('P2PK witness verification failed for proof')
     }
 
     // 5. Hash secrets to Y values for database lookup
@@ -246,6 +239,18 @@ export class MeltService {
 
     // 7. Update quote to PENDING
     await this.quoteRepo.updateMeltQuoteState(quoteId, 'PENDING')
+    if (quote.method === 'bolt11') {
+      notificationBus.publish('bolt11_melt_quote', {
+        quote: quote.id,
+        amount: quote.amount,
+        fee_reserve: quote.fee_reserve,
+        state: 'PENDING',
+        expiry: quote.expiry,
+        request: quote.request,
+        unit: quote.unit,
+        payment_preimage: null,
+      })
+    }
 
     logger.info(
       { quoteId, inputAmount, transactionId },
@@ -275,6 +280,18 @@ export class MeltService {
         result.fee_paid,
         outpoint
       )
+      if (quote.method === 'bolt11') {
+        notificationBus.publish('bolt11_melt_quote', {
+          quote: quote.id,
+          amount: quote.amount,
+          fee_reserve: quote.fee_reserve,
+          state: nextState,
+          expiry: quote.expiry,
+          request: quote.request,
+          unit: quote.unit,
+          payment_preimage: result.txid,
+        })
+      }
 
       logger.info(
         { quoteId, txid: result.txid, feePaid: result.fee_paid, unit: quote.unit },
@@ -419,7 +436,10 @@ export class MeltService {
         throw new AmountMismatchError(changeAmount, explicitAmount)
       }
 
-      return this.mintCrypto.signBlindedMessages(outputs.filter((output) => output.amount > 0))
+      const explicitOutputs = outputs.filter((output) => output.amount > 0)
+      const signatures = await this.mintCrypto.signBlindedMessages(explicitOutputs)
+      await this.signatureRepo?.saveMany(explicitOutputs, signatures)
+      return signatures
     }
 
     const denominations = this.splitAmount(changeAmount)
@@ -432,7 +452,9 @@ export class MeltService {
       amount,
     }))
 
-    return this.mintCrypto.signBlindedMessages(changeOutputs)
+    const signatures = await this.mintCrypto.signBlindedMessages(changeOutputs)
+    await this.signatureRepo?.saveMany(changeOutputs, signatures)
+    return signatures
   }
 
   private splitAmount(amount: number): number[] {

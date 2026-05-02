@@ -2,6 +2,7 @@ import { getPool } from '../database/db.js'
 import { KeysetRepository } from '../database/repositories/KeysetRepository.js'
 import { QuoteRepository } from '../database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../database/repositories/ProofRepository.js'
+import { SignatureRepository } from '../database/repositories/SignatureRepository.js'
 import { KeyManager } from '../core/crypto/KeyManager.js'
 import { MintCrypto } from '../core/crypto/MintCrypto.js'
 import { MintService } from '../core/services/MintService.js'
@@ -50,10 +51,12 @@ export function initializeContainer(): DIContainer {
   const keysetRepo = new KeysetRepository()
   const quoteRepo = new QuoteRepository()
   const proofRepo = new ProofRepository()
+  const signatureRepo = new SignatureRepository()
 
   container.register('keysetRepository', keysetRepo)
   container.register('quoteRepository', quoteRepo)
   container.register('proofRepository', proofRepo)
+  container.register('signatureRepository', signatureRepo)
 
   // Crypto
   const keyManager = new KeyManager(keysetRepo)
@@ -116,9 +119,9 @@ export function initializeContainer(): DIContainer {
   container.register('backendRegistry', backendRegistry)
 
   // Services - now using backend registry
-  const mintService = new MintService(mintCrypto, quoteRepo, backendRegistry, keyManager)
-  const swapService = new SwapService(mintCrypto, proofRepo)
-  const meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, backendRegistry)
+  const mintService = new MintService(mintCrypto, quoteRepo, backendRegistry, keyManager, signatureRepo)
+  const swapService = new SwapService(mintCrypto, proofRepo, signatureRepo)
+  const meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, backendRegistry, signatureRepo)
   const checkStateService = new CheckStateService(mintCrypto, proofRepo)
 
   container.register('mintService', mintService)

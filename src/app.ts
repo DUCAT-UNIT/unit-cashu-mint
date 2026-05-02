@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
+import websocket from '@fastify/websocket'
 import { env } from './config/env.js'
 import { logger } from './utils/logger.js'
 import { initializeContainer, DIContainer } from './di/container.js'
@@ -10,6 +11,8 @@ import { meltRoutes } from './api/routes/melt.js'
 import { keysRoutes } from './api/routes/keys.js'
 import { checkStateRoutes } from './api/routes/checkstate.js'
 import { dashboardRoutes } from './api/routes/dashboard.js'
+import { restoreRoutes } from './api/routes/restore.js'
+import { wsRoutes } from './api/routes/ws.js'
 import { buildMintInfo } from './mint-info.js'
 
 // Augment FastifyInstance with our DI container
@@ -45,12 +48,16 @@ export async function createServer() {
     timeWindow: env.RATE_LIMIT_WINDOW,
   })
 
+  await server.register(websocket)
+
   // Register API routes
   await server.register(swapRoutes)
   await server.register(mintRoutes)
   await server.register(meltRoutes)
   await server.register(keysRoutes)
   await server.register(checkStateRoutes)
+  await server.register(restoreRoutes)
+  await server.register(wsRoutes)
   await server.register(dashboardRoutes)
 
   // Health check

@@ -3,6 +3,7 @@ import { query, transaction } from '../db.js'
 import { ProofRecord, ProofRow, proofFromRow } from '../../core/models/Proof.js'
 import { Proof } from '../../types/cashu.js'
 import { ProofAlreadySpentError } from '../../utils/errors.js'
+import { notificationBus } from '../../core/events/notifications.js'
 
 export class ProofRepository {
   /**
@@ -74,6 +75,14 @@ export class ProofRepository {
         )
       }
     })
+
+    for (const Y of Y_values) {
+      notificationBus.publish('proof_state', {
+        Y,
+        state: 'SPENT',
+        witness: null,
+      })
+    }
   }
 
   /**

@@ -16,13 +16,16 @@ import {
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
+import { notificationBus } from '../events/notifications.js'
+import { SignatureRepository } from '../../database/repositories/SignatureRepository.js'
 
 export class MintService {
   constructor(
     private mintCrypto: MintCrypto,
     private quoteRepo: QuoteRepository,
     private backendRegistry: BackendRegistry,
-    private keyManager: KeyManager
+    private keyManager: KeyManager,
+    private signatureRepo?: SignatureRepository
   ) {}
 
   /**
@@ -194,6 +197,14 @@ export class MintService {
             depositStatus.vout
           )
           quote.state = 'PAID'
+          notificationBus.publish('bolt11_mint_quote', {
+            quote: quote.id,
+            request: quote.request,
+            state: quote.state,
+            expiry: quote.expiry,
+            amount: quote.amount,
+            unit: quote.unit,
+          })
 
           logger.info(
             { quoteId, txid: depositStatus.txid, vout: depositStatus.vout, confirmations: depositStatus.confirmations },
@@ -329,6 +340,7 @@ export class MintService {
 
     // 6. Sign blinded messages ONLY after deposit confirmed
     const signatures = await this.mintCrypto.signBlindedMessages(outputs)
+    await this.signatureRepo?.saveMany(outputs, signatures)
 
     // 7. Mark quote as issued
     await this.quoteRepo.updateMintQuoteState(quoteId, 'ISSUED')
@@ -357,6 +369,7 @@ export class MintService {
 
     await this.ensureOutputsUseUnit(outputs, quote.unit)
     const signatures = await this.mintCrypto.signBlindedMessages(outputs)
+    await this.signatureRepo?.saveMany(outputs, signatures)
     await this.quoteRepo.incrementMintQuoteIssued(quoteId, totalOutput)
 
     logger.info({ quoteId, totalOutput, signatureCount: signatures.length }, 'Onchain tokens minted')

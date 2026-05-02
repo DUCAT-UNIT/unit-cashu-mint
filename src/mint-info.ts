@@ -108,9 +108,21 @@ export function buildMintInfo(config: MintInfoConfig) {
       },
       '7': { supported: true },
       '8': { supported: config.SUPPORTS_LIGHTNING },
+      '9': { supported: true },
       '10': { supported: true },
       '11': { supported: true },
-      '12': { supported: false },
+      '12': { supported: true },
+      '17': {
+        supported: config.SUPPORTS_LIGHTNING
+          ? [
+              {
+                method: 'bolt11',
+                unit: 'sat',
+                commands: ['bolt11_mint_quote', 'bolt11_melt_quote', 'proof_state'],
+              },
+            ]
+          : [],
+      },
       '20': { supported: false },
       '23': { supported: config.SUPPORTS_LIGHTNING },
       '26': { supported: config.SUPPORTED_UNITS_ARRAY.includes('unit') || config.SUPPORTS_BITCOIN },

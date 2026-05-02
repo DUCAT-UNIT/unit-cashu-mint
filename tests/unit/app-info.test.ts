@@ -73,11 +73,26 @@ describe('buildMintInfo', () => {
     )
   })
 
-  it('advertises NUT-08 for Lightning and does not claim DLEQ support yet', () => {
+  it('advertises NUT-08 for Lightning and NUT-12 DLEQ proofs', () => {
     const info = buildMintInfo(baseConfig)
 
     expect(info.nuts['8']).toEqual({ supported: true })
-    expect(info.nuts['12']).toEqual({ supported: false })
+    expect(info.nuts['12']).toEqual({ supported: true })
+  })
+
+  it('advertises restore and websocket subscriptions when implemented', () => {
+    const info = buildMintInfo(baseConfig)
+
+    expect(info.nuts['9']).toEqual({ supported: true })
+    expect(info.nuts['17']).toEqual({
+      supported: [
+        {
+          method: 'bolt11',
+          unit: 'sat',
+          commands: ['bolt11_mint_quote', 'bolt11_melt_quote', 'proof_state'],
+        },
+      ],
+    })
   })
 
   it('does not advertise NUT-20 quote signatures until wallet support is complete', () => {

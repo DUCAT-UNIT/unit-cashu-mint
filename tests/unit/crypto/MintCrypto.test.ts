@@ -57,6 +57,8 @@ describe('MintCrypto', () => {
       expect(signature.id).toBe(keysetId)
       expect(signature.amount).toBe(8)
       expect(signature.C_).toMatch(/^[0-9a-f]{66}$/) // Compressed point
+      expect(signature.dleq?.e).toMatch(/^[0-9a-f]{64}$/)
+      expect(signature.dleq?.s).toMatch(/^[0-9a-f]{64}$/)
     })
 
     it('should sign multiple messages', async () => {

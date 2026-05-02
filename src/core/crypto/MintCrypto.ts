@@ -4,6 +4,7 @@ import { InvalidProofError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { Point } from '@noble/secp256k1'
 import { createHash } from 'crypto'
+import { createDLEQProof, pointFromHex as cashuPointFromHex } from '@cashu/cashu-ts'
 
 function sha256(data: Uint8Array): Uint8Array {
   return new Uint8Array(createHash('sha256').update(data).digest())
@@ -38,6 +39,10 @@ function pointFromHex(hex: string): Point {
   return Point.fromHex(hex)
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('hex')
+}
+
 export class MintCrypto {
   constructor(private keyManager: KeyManager) {}
 
@@ -45,7 +50,7 @@ export class MintCrypto {
    * Sign a blinded message (NUT-00)
    * C_ = k * B_
    */
-  async signBlindedMessage(message: BlindedMessage, includeDleq: boolean = false): Promise<BlindSignature> {
+  async signBlindedMessage(message: BlindedMessage, includeDleq: boolean = true): Promise<BlindSignature> {
     try {
       // Get private key for this amount/keyset
       const privateKeyHex = await this.keyManager.getPrivateKey(message.id, message.amount)
@@ -63,9 +68,12 @@ export class MintCrypto {
         C_: C_.toHex(true), // Compressed format
       }
 
-      // TODO: Add DLEQ proof if requested (NUT-12)
       if (includeDleq) {
-        logger.warn('DLEQ proofs not yet implemented')
+        const dleq = createDLEQProof(cashuPointFromHex(message.B_), Buffer.from(privateKeyHex, 'hex'))
+        signature.dleq = {
+          e: bytesToHex(dleq.e),
+          s: bytesToHex(dleq.s),
+        }
       }
 
       return signature
@@ -80,7 +88,7 @@ export class MintCrypto {
    */
   async signBlindedMessages(
     messages: BlindedMessage[],
-    includeDleq: boolean = false
+    includeDleq: boolean = true
   ): Promise<BlindSignature[]> {
     return Promise.all(messages.map((msg) => this.signBlindedMessage(msg, includeDleq)))
   }
