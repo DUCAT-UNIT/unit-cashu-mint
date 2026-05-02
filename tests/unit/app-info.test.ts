@@ -79,4 +79,10 @@ describe('buildMintInfo', () => {
     expect(info.nuts['8']).toEqual({ supported: true })
     expect(info.nuts['12']).toEqual({ supported: false })
   })
+
+  it('uses a NUT-06 implementation/version string for CDK parsers', () => {
+    const info = buildMintInfo(baseConfig)
+
+    expect(info.version).toBe('ducat-mint/0.1.0')
+  })
 })

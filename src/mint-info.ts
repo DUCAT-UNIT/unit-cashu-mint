@@ -90,7 +90,7 @@ export function buildMintInfo(config: MintInfoConfig) {
   return {
     name: config.MINT_NAME ?? 'Ducat UNIT Mint',
     pubkey: config.MINT_PUBKEY,
-    version: '0.1.0',
+    version: 'ducat-mint/0.1.0',
     description: config.MINT_DESCRIPTION ?? 'Cashu ecash backed by UNIT',
     contact: [
       config.MINT_CONTACT_EMAIL && { method: 'email', info: config.MINT_CONTACT_EMAIL },
