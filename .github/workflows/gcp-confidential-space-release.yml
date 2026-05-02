@@ -97,6 +97,7 @@ jobs:
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
     outputs:
       configured: ${{ steps.config.outputs.configured }}
 
