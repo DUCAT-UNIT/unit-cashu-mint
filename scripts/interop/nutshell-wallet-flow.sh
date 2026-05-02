@@ -18,6 +18,7 @@ else
       git clone --depth 1 "$NUTSHELL_REPO" "$NUTSHELL_SRC"
   fi
   python -m pip install -e "$NUTSHELL_SRC"
+  python -m pip install 'marshmallow<4'
   CASHU=( cashu )
 fi
 
