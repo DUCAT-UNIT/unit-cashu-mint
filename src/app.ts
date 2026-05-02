@@ -50,31 +50,8 @@ export async function createServer() {
 
   await server.register(websocket)
 
-  // Register API routes
-  await server.register(swapRoutes)
-  await server.register(mintRoutes)
-  await server.register(meltRoutes)
-  await server.register(keysRoutes)
-  await server.register(checkStateRoutes)
-  await server.register(restoreRoutes)
-  await server.register(wsRoutes)
-  await server.register(dashboardRoutes)
-
-  // Health check
-  server.get('/health', async () => {
-    return {
-      status: 'ok',
-      timestamp: Date.now(),
-      version: '0.1.0',
-    }
-  })
-
-  // API routes
-  server.get('/v1/info', async () => {
-    return buildMintInfo(env)
-  })
-
-  // Error handler
+  // Error handler. Register this before route plugins so plugin-scoped routes
+  // inherit Cashu/NUT-00 error formatting.
   server.setErrorHandler((error, request, reply) => {
     logger.error(
       {
@@ -108,6 +85,30 @@ export async function createServer() {
     }
 
     return reply.status(500).send(response)
+  })
+
+  // Register API routes
+  await server.register(swapRoutes)
+  await server.register(mintRoutes)
+  await server.register(meltRoutes)
+  await server.register(keysRoutes)
+  await server.register(checkStateRoutes)
+  await server.register(restoreRoutes)
+  await server.register(wsRoutes)
+  await server.register(dashboardRoutes)
+
+  // Health check
+  server.get('/health', async () => {
+    return {
+      status: 'ok',
+      timestamp: Date.now(),
+      version: '0.1.0',
+    }
+  })
+
+  // API routes
+  server.get('/v1/info', async () => {
+    return buildMintInfo(env)
   })
 
   return server
