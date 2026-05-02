@@ -249,6 +249,8 @@ async function ensureBucket(accessToken, { projectId, bucket, location }) {
 async function createSourceArchive(archivePath) {
   await run('tar', [
     '--exclude=.git',
+    '--exclude=.DS_Store',
+    '--exclude=._*',
     '--exclude=.env',
     '--exclude=.env.*',
     '--exclude=node_modules',
@@ -393,10 +395,14 @@ async function git(args) {
 
 function run(command, args, options = {}) {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, {
-      cwd: repoRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+  const child = spawn(command, args, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      COPYFILE_DISABLE: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
     const stderr = []
 
     child.stdout.on('data', (chunk) => {

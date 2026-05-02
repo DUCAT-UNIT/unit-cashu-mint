@@ -33,6 +33,7 @@ async function runMigrations() {
     const files = await readdir(MIGRATIONS_DIR)
     const sqlFiles = files
       .filter((f) => f.endsWith('.sql'))
+      .filter((f) => !f.startsWith('.'))
       .sort() // Sort alphabetically (assumes format: 001_name.sql, 002_name.sql, etc.)
 
     logger.info({ count: sqlFiles.length }, 'Found migration files')
