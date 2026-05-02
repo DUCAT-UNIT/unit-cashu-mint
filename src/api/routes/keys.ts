@@ -60,7 +60,7 @@ export const keysRoutes: FastifyPluginAsync = async (fastify) => {
       const { keyset_id } = request.params
 
       const keys = await keyManager.getPublicKeys(keyset_id)
-      return reply.code(200).send(keys)
+      return reply.code(200).send({ keysets: [keys] })
     }
   )
 

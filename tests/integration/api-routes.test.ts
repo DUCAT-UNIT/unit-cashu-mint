@@ -45,7 +45,8 @@ describe('API Routes Integration', () => {
 
       expect(response.statusCode).toBe(200)
       const body = JSON.parse(response.body)
-      expect(body).toBeDefined()
+      expect(body.keysets).toHaveLength(1)
+      expect(body.keysets[0].id).toBe(keysetId)
     })
 
     it('GET /v1/keysets should return keyset list', async () => {
