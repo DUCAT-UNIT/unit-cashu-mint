@@ -33,7 +33,7 @@ export class MintService {
     unit: string,
     runeId: string,
     method: string = 'unit',
-    pubkey?: string
+    _pubkey?: string
   ): Promise<MintQuoteResponse> {
     // Validate amount
     if (amount < env.MIN_MINT_AMOUNT || amount > env.MAX_MINT_AMOUNT) {
@@ -89,7 +89,7 @@ export class MintService {
       request: depositAddress,
       state: 'UNPAID',
       expiry,
-      pubkey,
+      pubkey: undefined,
       amount_paid: 0,
       amount_issued: 0,
     })
@@ -229,9 +229,9 @@ export class MintService {
 
     // 1. Get quote
     const quote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
-    this.verifyMintQuoteSignature(quoteId, outputs, quote.pubkey, signature)
 
     if (quote.method === 'onchain') {
+      this.verifyMintQuoteSignature(quoteId, outputs, quote.pubkey, signature)
       return this.mintOnchainTokens(quoteId, outputs)
     }
 

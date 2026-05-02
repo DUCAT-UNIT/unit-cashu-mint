@@ -174,8 +174,107 @@ describe('MintService', () => {
     })
   })
 
+  describe('createMintQuote', () => {
+    it('does not persist NUT-20 pubkeys on bolt11 quotes while quote signatures are disabled', async () => {
+      const lightningBackend = createMockBackend('sat', 'bolt11')
+      const registry = new BackendRegistry()
+      registry.register(lightningBackend)
+      const service = new MintService(
+        mockMintCrypto,
+        mockQuoteRepo,
+        registry,
+        mockKeyManager
+      )
+
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(async (quote) => ({
+        ...quote,
+        created_at: Date.now(),
+      } as any))
+
+      const result = await service.createMintQuote(
+        128,
+        'sat',
+        'btc:0',
+        'bolt11',
+        '02' + '33'.repeat(32)
+      )
+
+      expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 128,
+          unit: 'sat',
+          method: 'bolt11',
+          pubkey: undefined,
+        })
+      )
+      expect(result.pubkey).toBeUndefined()
+    })
+  })
+
   describe('mintTokens - Amount Verification', () => {
     const quoteId = 'dc9713f24eab8a2f2c3acd405bc95672352ade634868be38c8ec8dfdc86a14fc'
+
+    it('does not require NUT-20 signatures for bolt11 quotes with a stored pubkey', async () => {
+      const lightningBackend = createMockBackend('sat', 'bolt11')
+      const registry = new BackendRegistry()
+      registry.register(lightningBackend)
+      const service = new MintService(
+        mockMintCrypto,
+        mockQuoteRepo,
+        registry,
+        mockKeyManager
+      )
+
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
+        id: quoteId,
+        amount: 500,
+        unit: 'sat',
+        rune_id: 'btc:0',
+        method: 'bolt11',
+        state: 'PAID',
+        pubkey: '02' + '44'.repeat(32),
+      }))
+      vi.mocked(lightningBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        txid: 'bolt11-payment',
+        confirmations: 1,
+      })
+      vi.mocked(mockMintCrypto.signBlindedMessages).mockResolvedValue([
+        { id: 'keyset123', amount: 500, C_: '02abc' },
+      ])
+
+      const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
+      const result = await service.mintTokens(quoteId, outputs)
+
+      expect(result.signatures).toHaveLength(1)
+      expect(mockMintCrypto.signBlindedMessages).toHaveBeenCalledWith(outputs)
+    })
+
+    it('requires mint quote signatures for onchain quotes with a pubkey', async () => {
+      const onchainBackend = createMockBackend('unit', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(onchainBackend, [], ['unit'])
+      const service = new MintService(
+        mockMintCrypto,
+        mockQuoteRepo,
+        registry,
+        mockKeyManager
+      )
+
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
+        id: quoteId,
+        amount: 0,
+        method: 'onchain',
+        state: 'PAID',
+        pubkey: '02' + '55'.repeat(32),
+      }))
+
+      const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
+
+      await expect(service.mintTokens(quoteId, outputs))
+        .rejects.toThrow('Mint quote requires a valid signature')
+      expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
+    })
 
     it('should mint tokens when deposit amount matches quote amount', async () => {
       const quoteAmount = 500 // smallest units
