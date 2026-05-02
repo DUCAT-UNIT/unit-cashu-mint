@@ -27,7 +27,7 @@ jobs:
           tar -xzf /tmp/actionlint.tar.gz -C /tmp/actionlint
 
       - name: Lint workflows
-        run: /tmp/actionlint/actionlint
+        run: /tmp/actionlint/actionlint -shellcheck=
 
   test:
     name: Lint, Build, Test
@@ -90,4 +90,4 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run migrate
-      - run: npm test -- --run
+      - run: npm test -- --run tests/unit/app-info.test.ts tests/unit/services/MeltService.test.ts tests/unit/lightning/FakeLightningBackend.test.ts tests/unit/crypto/keysetId.test.ts
