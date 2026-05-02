@@ -43,6 +43,9 @@ export const keysRoutes: FastifyPluginAsync = async (fastify) => {
       keysets: keysets.map((keyset) => ({
         id: keyset.id,
         unit: keyset.unit,
+        active: keyset.active,
+        input_fee_ppk: keyset.input_fee_ppk ?? 0,
+        final_expiry: keyset.final_expiry,
         keys: keyset.public_keys,
       })),
     }

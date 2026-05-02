@@ -35,6 +35,12 @@ describe('API Routes Integration', () => {
       expect(body.keysets).toBeDefined()
       expect(Array.isArray(body.keysets)).toBe(true)
       expect(body.keysets.length).toBeGreaterThan(0)
+      expect(body.keysets[0]).toEqual(
+        expect.objectContaining({
+          active: true,
+          input_fee_ppk: expect.any(Number),
+        })
+      )
     })
 
     it('GET /v1/keys/:keyset_id should return specific keyset', async () => {
@@ -47,6 +53,12 @@ describe('API Routes Integration', () => {
       const body = JSON.parse(response.body)
       expect(body.keysets).toHaveLength(1)
       expect(body.keysets[0].id).toBe(keysetId)
+      expect(body.keysets[0]).toEqual(
+        expect.objectContaining({
+          active: true,
+          input_fee_ppk: expect.any(Number),
+        })
+      )
     })
 
     it('GET /v1/keysets should return keyset list', async () => {

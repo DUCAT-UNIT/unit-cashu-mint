@@ -157,6 +157,9 @@ export class KeyManager {
     return {
       id: keyset.id,
       unit: keyset.unit,
+      active: keyset.active,
+      input_fee_ppk: keyset.input_fee_ppk ?? 0,
+      final_expiry: keyset.final_expiry,
       keys: keyset.public_keys,
     }
   }
