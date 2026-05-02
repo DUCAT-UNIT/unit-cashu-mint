@@ -24,13 +24,16 @@ export class SwapService {
   async swap(inputs: Proof[], outputs: BlindedMessage[]): Promise<{ signatures: BlindSignature[] }> {
     // 1. Verify input amounts match output amounts
     const inputAmount = this.mintCrypto.sumProofs(inputs)
+    const inputFees = await this.mintCrypto.calculateInputFees(inputs)
     const outputAmount = outputs.reduce((sum, o) => sum + o.amount, 0)
+    const expectedOutputAmount = inputAmount - inputFees
 
     logger.info(
       {
         inputCount: inputs.length,
         outputCount: outputs.length,
         inputAmount,
+        inputFees,
         outputAmount,
         inputAmounts: inputs.map(p => p.amount),
         outputAmounts: outputs.map(o => o.amount)
@@ -38,8 +41,8 @@ export class SwapService {
       'Processing swap request'
     )
 
-    if (inputAmount !== outputAmount) {
-      throw new AmountMismatchError(outputAmount, inputAmount)
+    if (outputAmount !== expectedOutputAmount) {
+      throw new AmountMismatchError(expectedOutputAmount, outputAmount)
     }
 
     // 2. Verify all input proofs have valid signatures

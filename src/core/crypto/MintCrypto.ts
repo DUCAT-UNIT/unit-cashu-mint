@@ -174,6 +174,16 @@ export class MintCrypto {
     return proofs.reduce((sum, proof) => sum + proof.amount, 0)
   }
 
+  async calculateInputFees(proofs: Array<Pick<Proof, 'id'>>): Promise<number> {
+    let feePpk = 0
+
+    for (const proof of proofs) {
+      feePpk += await this.keyManager.getInputFeePpk(proof.id)
+    }
+
+    return Math.ceil(feePpk / 1000)
+  }
+
   /**
    * Check if amount matches sum of proofs
    */

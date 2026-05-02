@@ -108,6 +108,7 @@ describe('MeltService', () => {
     } as unknown as ProofRepository
     const mintCrypto = {
       sumProofs: vi.fn().mockReturnValue(64),
+      calculateInputFees: vi.fn().mockResolvedValue(0),
       verifyProofsOrThrow: vi.fn(),
       hashSecret: vi.fn().mockReturnValue('02' + '11'.repeat(32)),
       signBlindedMessages: vi.fn().mockResolvedValue([
@@ -167,6 +168,7 @@ describe('MeltService', () => {
     } as unknown as ProofRepository
     const mintCrypto = {
       sumProofs: vi.fn().mockReturnValue(25),
+      calculateInputFees: vi.fn().mockResolvedValue(0),
       verifyProofsOrThrow: vi.fn(),
       hashSecret: vi.fn(),
       signBlindedMessages: vi.fn(),

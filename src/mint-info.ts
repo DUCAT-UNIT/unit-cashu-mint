@@ -123,7 +123,7 @@ export function buildMintInfo(config: MintInfoConfig) {
             ]
           : [],
       },
-      '20': { supported: false },
+      '20': { supported: true },
       '23': { supported: config.SUPPORTS_LIGHTNING },
       '26': { supported: config.SUPPORTED_UNITS_ARRAY.includes('unit') || config.SUPPORTS_BITCOIN },
     },

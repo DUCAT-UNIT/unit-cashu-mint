@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from 'crypto'
-import { schnorr } from '@noble/secp256k1'
+import { randomBytes } from 'crypto'
+import { verifyMintQuoteSignature as cashuVerifyMintQuoteSignature } from '@cashu/cashu-ts'
 import { MintCrypto } from '../crypto/MintCrypto.js'
 import { KeyManager } from '../crypto/KeyManager.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
@@ -36,8 +36,12 @@ export class MintService {
     unit: string,
     runeId: string,
     method: string = 'unit',
-    _pubkey?: string
+    pubkey?: string
   ): Promise<MintQuoteResponse> {
+    if (pubkey) {
+      this.validatePubkey(pubkey)
+    }
+
     // Validate amount
     if (amount < env.MIN_MINT_AMOUNT || amount > env.MAX_MINT_AMOUNT) {
       throw new Error(
@@ -92,7 +96,7 @@ export class MintService {
       request: depositAddress,
       state: 'UNPAID',
       expiry,
-      pubkey: undefined,
+      pubkey,
       amount_paid: 0,
       amount_issued: 0,
     })
@@ -245,6 +249,8 @@ export class MintService {
       this.verifyMintQuoteSignature(quoteId, outputs, quote.pubkey, signature)
       return this.mintOnchainTokens(quoteId, outputs)
     }
+
+    this.verifyMintQuoteSignature(quoteId, outputs, quote.pubkey, signature)
 
     // 2. ALWAYS verify deposit on-chain before issuing tokens
     // This prevents:
@@ -473,16 +479,10 @@ export class MintService {
       throw new MintError('Mint quote requires a valid signature', 20008)
     }
 
-    const message = quoteId + outputs.map((output) => output.B_).join('')
-    const digest = createHash('sha256').update(message, 'utf8').digest()
-    const xOnlyPubkey = pubkey.length === 66 ? pubkey.slice(2) : pubkey
     let isValid = false
     try {
-      isValid = schnorr.verify(
-        Buffer.from(signature, 'hex'),
-        digest,
-        Buffer.from(xOnlyPubkey, 'hex')
-      )
+      const blindedMessages = outputs as unknown as Parameters<typeof cashuVerifyMintQuoteSignature>[2]
+      isValid = cashuVerifyMintQuoteSignature(pubkey, quoteId, blindedMessages, signature)
     } catch {
       isValid = false
     }

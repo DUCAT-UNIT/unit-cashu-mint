@@ -8,6 +8,8 @@ import { IPaymentBackend } from '../../../src/core/payment/types.js'
 import { MintQuote } from '../../../src/core/models/Quote.js'
 import { MintQuoteResponse } from '../../../src/types/cashu.js'
 import { AmountMismatchError } from '../../../src/utils/errors.js'
+import { getPublicKey } from '@noble/secp256k1'
+import { signMintQuote } from '@cashu/cashu-ts'
 
 // Mock dependencies
 vi.mock('../../../src/utils/logger.js', () => ({
@@ -175,7 +177,7 @@ describe('MintService', () => {
   })
 
   describe('createMintQuote', () => {
-    it('does not persist NUT-20 pubkeys on bolt11 quotes while quote signatures are disabled', async () => {
+    it('persists NUT-20 pubkeys on bolt11 quotes', async () => {
       const lightningBackend = createMockBackend('sat', 'bolt11')
       const registry = new BackendRegistry()
       registry.register(lightningBackend)
@@ -191,12 +193,13 @@ describe('MintService', () => {
         created_at: Date.now(),
       } as any))
 
+      const pubkey = '02' + '33'.repeat(32)
       const result = await service.createMintQuote(
         128,
         'sat',
         'btc:0',
         'bolt11',
-        '02' + '33'.repeat(32)
+        pubkey
       )
 
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
@@ -204,17 +207,17 @@ describe('MintService', () => {
           amount: 128,
           unit: 'sat',
           method: 'bolt11',
-          pubkey: undefined,
+          pubkey,
         })
       )
-      expect(result.pubkey).toBeUndefined()
+      expect(result.pubkey).toBe(pubkey)
     })
   })
 
   describe('mintTokens - Amount Verification', () => {
     const quoteId = 'dc9713f24eab8a2f2c3acd405bc95672352ade634868be38c8ec8dfdc86a14fc'
 
-    it('does not require NUT-20 signatures for bolt11 quotes with a stored pubkey', async () => {
+    it('requires valid NUT-20 signatures for bolt11 quotes with a stored pubkey', async () => {
       const lightningBackend = createMockBackend('sat', 'bolt11')
       const registry = new BackendRegistry()
       registry.register(lightningBackend)
@@ -225,6 +228,8 @@ describe('MintService', () => {
         mockKeyManager
       )
 
+      const privkey = '11'.repeat(32)
+      const pubkey = Buffer.from(getPublicKey(Buffer.from(privkey, 'hex'), true)).toString('hex')
       vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
         id: quoteId,
         amount: 500,
@@ -232,7 +237,7 @@ describe('MintService', () => {
         rune_id: 'btc:0',
         method: 'bolt11',
         state: 'PAID',
-        pubkey: '02' + '44'.repeat(32),
+        pubkey,
       }))
       vi.mocked(lightningBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -244,7 +249,12 @@ describe('MintService', () => {
       ])
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
-      const result = await service.mintTokens(quoteId, outputs)
+
+      await expect(service.mintTokens(quoteId, outputs))
+        .rejects.toThrow('Mint quote requires a valid signature')
+
+      const signature = signMintQuote(privkey, quoteId, outputs)
+      const result = await service.mintTokens(quoteId, outputs, signature)
 
       expect(result.signatures).toHaveLength(1)
       expect(mockMintCrypto.signBlindedMessages).toHaveBeenCalledWith(outputs)

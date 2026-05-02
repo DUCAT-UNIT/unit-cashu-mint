@@ -209,16 +209,17 @@ export class MeltService {
 
     // 3. Verify input amounts cover quote amount and advertised fee reserve.
     const inputAmount = this.mintCrypto.sumProofs(inputs)
+    const inputFees = await this.mintCrypto.calculateInputFees(inputs)
     const reservedAmount = quote.method === 'onchain'
-      ? quote.amount + (quote.fee ?? 0)
-      : quote.amount + quote.fee_reserve
+      ? quote.amount + (quote.fee ?? 0) + inputFees
+      : quote.amount + quote.fee_reserve + inputFees
 
     if (inputAmount < reservedAmount) {
       throw new AmountMismatchError(reservedAmount, inputAmount)
     }
 
     const maxChangeAmount = quote.method === 'bolt11'
-      ? inputAmount - quote.amount
+      ? inputAmount - quote.amount - inputFees
       : inputAmount - reservedAmount
     this.validateChangeOutputs(outputs, maxChangeAmount)
 
@@ -268,7 +269,7 @@ export class MeltService {
       const nextState = quote.method === 'onchain' ? 'PENDING' : 'PAID'
       const outpoint = quote.method === 'onchain' ? `${result.txid}:0` : undefined
       const spentAmount = quote.method === 'bolt11'
-        ? quote.amount + result.fee_paid
+        ? quote.amount + result.fee_paid + inputFees
         : reservedAmount
       const changeAmount = inputAmount - spentAmount
       const change = await this.signChangeOutputs(outputs, changeAmount)

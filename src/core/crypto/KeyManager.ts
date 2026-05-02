@@ -15,6 +15,8 @@ const DENOMINATIONS = [
   262144, 524288, 1048576, 2097152, 4194304, 8388608,
 ]
 
+export const DEFAULT_INPUT_FEE_PPK = 1000
+
 export function deriveMintKeysetId(
   publicKeys: Record<number, string>,
   unit: string,
@@ -68,7 +70,7 @@ export class KeyManager {
       public_keys[amount] = Buffer.from(publicKey).toString('hex')
     }
 
-    const inputFeePpk = 0
+    const inputFeePpk = DEFAULT_INPUT_FEE_PPK
     const id = deriveMintKeysetId(public_keys, unit, inputFeePpk)
 
     // Encrypt private keys before storing
@@ -164,6 +166,17 @@ export class KeyManager {
     }
   }
 
+  async getInputFeePpk(keysetId: string): Promise<number> {
+    const keyset = this.keysetCache.get(keysetId)
+
+    if (keyset) {
+      return keyset.input_fee_ppk ?? 0
+    }
+
+    const dbKeyset = await this.keysetRepo.findByIdOrThrow(keysetId)
+    return dbKeyset.input_fee_ppk ?? 0
+  }
+
   /**
    * Get all active keysets
    */
@@ -208,10 +221,35 @@ export class KeyManager {
    * Get active keyset for a specific rune ID and unit
    */
   async getKeysetByRuneIdAndUnit(runeId: string, unit: string): Promise<Keyset | null> {
-    const keyset = await this.keysetRepo.findActiveByRuneIdAndUnit(runeId, unit)
+    let keyset = await this.keysetRepo.findActiveByRuneIdAndUnit(runeId, unit)
 
     if (!keyset) {
       return null
+    }
+
+    if ((keyset.input_fee_ppk ?? 0) !== DEFAULT_INPUT_FEE_PPK) {
+      logger.info(
+        {
+          keysetId: keyset.id,
+          runeId,
+          unit,
+          inputFeePpk: keyset.input_fee_ppk ?? 0,
+          targetInputFeePpk: DEFAULT_INPUT_FEE_PPK,
+        },
+        'Generating replacement keyset with protocol input fees'
+      )
+      try {
+        keyset = await this.generateKeyset(runeId, unit)
+      } catch (error: any) {
+        if (error?.code !== '23505') {
+          throw error
+        }
+
+        keyset = await this.keysetRepo.findActiveByRuneIdAndUnit(runeId, unit)
+        if (!keyset) {
+          throw error
+        }
+      }
     }
 
     // Decrypt and cache if not already cached

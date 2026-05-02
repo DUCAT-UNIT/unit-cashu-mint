@@ -95,10 +95,10 @@ describe('buildMintInfo', () => {
     })
   })
 
-  it('does not advertise NUT-20 quote signatures until wallet support is complete', () => {
+  it('advertises NUT-20 quote signatures', () => {
     const info = buildMintInfo(baseConfig)
 
-    expect(info.nuts['20']).toEqual({ supported: false })
+    expect(info.nuts['20']).toEqual({ supported: true })
   })
 
   it('uses a NUT-06 implementation/version string for CDK parsers', () => {
