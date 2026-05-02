@@ -63,7 +63,7 @@ describe('App Factory', () => {
     expect(response.statusCode).toBe(200)
     const body = JSON.parse(response.body)
     expect(body.name).toBeDefined()
-    expect(body.version).toBe('0.1.0')
+    expect(body.version).toBe('ducat-mint/0.1.0')
     expect(body.nuts).toBeDefined()
     expect(body.nuts['4']).toBeDefined()
     expect(body.nuts['5']).toBeDefined()
