@@ -20,6 +20,7 @@ trap shutdown EXIT INT TERM
 : "${KMS_KEY_NAME:?KMS_KEY_NAME is required}"
 
 ENV_FILE="/run/ducat-mint/mint.env"
+install -d -m 0700 "$(dirname "$ENV_FILE")"
 
 log "Fetching runtime environment through Confidential Space attestation"
 node /app/scripts/gcp-confidential-space-env.mjs > "$ENV_FILE"
