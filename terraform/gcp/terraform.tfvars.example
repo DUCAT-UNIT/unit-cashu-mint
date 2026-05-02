@@ -7,6 +7,17 @@ environment = "prod"
 
 manage_project_services = true
 
+# Optional post-deploy tamper evidence. Enable after choosing the alert
+# destination and log retention stance. Locking retention is irreversible for
+# the configured retention period.
+audit_monitoring_enabled             = false
+audit_alert_email                    = "security-alerts@yourdomain.com"
+audit_log_archive_bucket_name        = ""
+audit_log_archive_location           = "US-CENTRAL1"
+audit_log_retention_days             = 365
+audit_log_archive_retention_locked   = false
+audit_data_access_logs_enabled       = false
+
 domain_name = "cashu-mint.yourdomain.com"
 tls_email   = "ops@yourdomain.com"
 

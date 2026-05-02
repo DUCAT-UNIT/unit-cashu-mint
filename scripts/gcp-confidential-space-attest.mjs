@@ -73,6 +73,27 @@ const managedPostgresEnabled = parseBoolean(
     tfvars.managed_postgres_enabled ??
     false
 )
+const auditMonitoringEnabled = parseBoolean(
+  args['require-audit-monitoring'] ??
+    process.env.REQUIRE_AUDIT_MONITORING ??
+    process.env.TF_VAR_audit_monitoring_enabled ??
+    tfvars.audit_monitoring_enabled ??
+    false
+)
+const auditDataAccessLogsEnabled = parseBoolean(
+  args['audit-data-access-logs-enabled'] ??
+    process.env.TF_VAR_audit_data_access_logs_enabled ??
+    tfvars.audit_data_access_logs_enabled ??
+    false
+)
+const configuredAuditLogArchiveBucketName =
+  args['audit-log-archive-bucket-name'] ??
+  process.env.TF_VAR_audit_log_archive_bucket_name ??
+  tfvars.audit_log_archive_bucket_name
+const auditLogArchiveBucketName =
+  configuredAuditLogArchiveBucketName && configuredAuditLogArchiveBucketName !== ''
+    ? configuredAuditLogArchiveBucketName
+    : `${projectId}-${namePrefix}-audit-logs`
 const outputDir = resolve(repoRoot, args['output-dir'] ?? 'attestations')
 const instanceName = args.instance ?? `${namePrefix}-confidential-space`
 const runtimeServiceAccount =
@@ -106,6 +127,9 @@ await collectIamEvidence()
 await collectSecretEvidence()
 if (managedPostgresEnabled) {
   await collectCloudSqlEvidence()
+}
+if (auditMonitoringEnabled) {
+  await collectAuditMonitoringEvidence()
 }
 await collectEndpointEvidence()
 
@@ -144,6 +168,8 @@ const predicate = {
     workloadIdentityRequiresExpectedDigest: checkOk('wif.condition_requires_digest'),
     workloadIdentityRequiresConfidentialSpace: checkOk('wif.condition_requires_confidential_space'),
     workloadIdentityRequiresProductionImage: checkOk('wif.condition_requires_production_image'),
+    auditMonitoringIsConfigured: auditMonitoringEnabled ? checkOk('audit.archive_sink_exists') : null,
+    kmsAndSecretDataAccessLogsAreEnabled: auditDataAccessLogsEnabled ? checkOk('audit.kms_data_access_logs_enabled') && checkOk('audit.secretmanager_data_access_logs_enabled') : null,
     liveHealthPassed: checkOk('endpoint.health'),
   },
   evidence,
@@ -434,6 +460,99 @@ async function collectCloudSqlEvidence() {
     instance.diskEncryptionConfiguration?.kmsKeyName === appKmsKeyName,
     `Cloud SQL uses expected CMEK ${appKmsKeyName}`
   )
+}
+
+async function collectAuditMonitoringEvidence() {
+  const [bucket, sink, policies, projectPolicy] = await Promise.all([
+    googleFetch(token, `https://storage.googleapis.com/storage/v1/b/${auditLogArchiveBucketName}`, {
+      allowNotFound: true,
+    }),
+    googleFetch(
+      token,
+      `https://logging.googleapis.com/v2/projects/${projectId}/sinks/${namePrefix}-security-audit-archive`,
+      { allowNotFound: true }
+    ),
+    googleFetch(token, `https://monitoring.googleapis.com/v3/projects/${projectId}/alertPolicies?pageSize=100`),
+    getIamPolicy(`https://cloudresourcemanager.googleapis.com/v1/projects/${projectId}:getIamPolicy`),
+  ])
+  const alertPolicy = (policies.alertPolicies ?? []).find(
+    (policy) => policy.displayName === `${namePrefix} sensitive admin audit activity`
+  )
+
+  evidence.auditMonitoring = {
+    archiveBucket: bucket
+      ? {
+          name: bucket.name,
+          location: bucket.location,
+          retentionPolicy: bucket.retentionPolicy ?? null,
+          iamConfiguration: bucket.iamConfiguration ?? null,
+        }
+      : null,
+    archiveSink: sink
+      ? {
+          name: sink.name,
+          destination: sink.destination,
+          filter: sink.filter,
+          writerIdentity: sink.writerIdentity,
+        }
+      : null,
+    alertPolicy: alertPolicy
+      ? {
+          name: alertPolicy.name,
+          displayName: alertPolicy.displayName,
+          enabled: alertPolicy.enabled,
+          notificationChannels: alertPolicy.notificationChannels ?? [],
+        }
+      : null,
+    auditConfigs: projectPolicy.auditConfigs ?? [],
+  }
+
+  expect('audit.archive_bucket_exists', Boolean(bucket), `${auditLogArchiveBucketName} exists`)
+  if (bucket) {
+    expect(
+      'audit.archive_bucket_public_access_prevention',
+      bucket.iamConfiguration?.publicAccessPrevention === 'enforced',
+      'audit archive bucket enforces public access prevention'
+    )
+    expect(
+      'audit.archive_bucket_retention_configured',
+      Number(bucket.retentionPolicy?.retentionPeriod ?? 0) > 0,
+      'audit archive bucket has retention configured'
+    )
+  }
+
+  expect('audit.archive_sink_exists', Boolean(sink), `${namePrefix}-security-audit-archive exists`)
+  if (sink) {
+    expect(
+      'audit.archive_sink_routes_cloud_audit_logs',
+      sink.filter?.includes('cloudaudit.googleapis.com/activity') === true,
+      'audit archive sink routes Admin Activity audit logs'
+    )
+  }
+
+  expect('audit.alert_policy_exists', Boolean(alertPolicy), 'sensitive admin audit activity alert policy exists')
+  if (alertPolicy) {
+    expect('audit.alert_policy_enabled', alertPolicy.enabled !== false, 'audit alert policy is enabled')
+    const conditionFilter = alertPolicy.conditions?.[0]?.conditionMatchedLog?.filter ?? ''
+    expect(
+      'audit.alert_policy_matches_iam_changes',
+      conditionFilter.includes('SetIamPolicy'),
+      'audit alert policy matches SetIamPolicy changes'
+    )
+  }
+
+  if (auditDataAccessLogsEnabled) {
+    expect(
+      'audit.kms_data_access_logs_enabled',
+      serviceAuditConfigHas(projectPolicy, 'cloudkms.googleapis.com', ['DATA_READ', 'DATA_WRITE']),
+      'Cloud KMS DATA_READ and DATA_WRITE audit logs are enabled'
+    )
+    expect(
+      'audit.secretmanager_data_access_logs_enabled',
+      serviceAuditConfigHas(projectPolicy, 'secretmanager.googleapis.com', ['DATA_READ', 'DATA_WRITE']),
+      'Secret Manager DATA_READ and DATA_WRITE audit logs are enabled'
+    )
+  }
 }
 
 async function collectEndpointEvidence() {
@@ -769,6 +888,12 @@ function secretKmsKeys(secret) {
   }
 
   return [...new Set(keys)].sort()
+}
+
+function serviceAuditConfigHas(policy, service, logTypes) {
+  const config = (policy.auditConfigs ?? []).find((candidate) => candidate.service === service)
+  const enabled = new Set((config?.auditLogConfigs ?? []).map((item) => item.logType))
+  return logTypes.every((logType) => enabled.has(logType))
 }
 
 function firstPublicIp(instance) {

@@ -74,6 +74,13 @@ env:
   TF_VAR_db_sslmode: ${{ vars.GCP_MINT_DB_SSLMODE || 'disable' }}
   TF_VAR_db_password: ${{ secrets.GCP_MINT_DB_PASSWORD }}
   TF_VAR_manage_project_services: ${{ vars.GCP_MANAGE_PROJECT_SERVICES || 'true' }}
+  TF_VAR_audit_monitoring_enabled: ${{ vars.GCP_AUDIT_MONITORING_ENABLED || 'true' }}
+  TF_VAR_audit_alert_email: ${{ vars.GCP_AUDIT_ALERT_EMAIL || '' }}
+  TF_VAR_audit_log_archive_bucket_name: ${{ vars.GCP_AUDIT_LOG_ARCHIVE_BUCKET_NAME || '' }}
+  TF_VAR_audit_log_archive_location: ${{ vars.GCP_AUDIT_LOG_ARCHIVE_LOCATION || vars.GCP_REGION || 'us-central1' }}
+  TF_VAR_audit_log_retention_days: ${{ vars.GCP_AUDIT_LOG_RETENTION_DAYS || '365' }}
+  TF_VAR_audit_log_archive_retention_locked: ${{ vars.GCP_AUDIT_LOG_ARCHIVE_RETENTION_LOCKED || 'false' }}
+  TF_VAR_audit_data_access_logs_enabled: ${{ vars.GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED || 'false' }}
 
 jobs:
   release:

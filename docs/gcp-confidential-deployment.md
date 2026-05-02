@@ -221,13 +221,45 @@ GCP_MINT_DB_PASSWORD
 
 Optional variables include `GCP_REGION`, `GCP_ZONE`,
 `GCP_ARTIFACT_REGISTRY_LOCATION`, `GCP_ARTIFACT_REGISTRY_REPOSITORY`,
-`GCP_ARTIFACT_REGISTRY_IMAGE`, `GCP_CLOUD_BUILD_SOURCE_BUCKET`, and
-`GCP_TF_STATE_PREFIX`.
+`GCP_ARTIFACT_REGISTRY_IMAGE`, `GCP_CLOUD_BUILD_SOURCE_BUCKET`,
+`GCP_TF_STATE_PREFIX`, `GCP_AUDIT_ALERT_EMAIL`,
+`GCP_AUDIT_LOG_ARCHIVE_BUCKET_NAME`, `GCP_AUDIT_LOG_RETENTION_DAYS`,
+`GCP_AUDIT_LOG_ARCHIVE_RETENTION_LOCKED`, and
+`GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED`.
 
 The CI deploy expects Terraform state in a GCS backend. For the already-running
 dev deployment, migrate the local state into the configured state bucket before
 turning on CI applies. Without that migration, CI has no knowledge of the
 existing resources and must not be used to apply.
+
+## Post-Deploy Audit Monitoring
+
+Set `audit_monitoring_enabled = true` to make later privileged changes
+observable. Terraform creates:
+
+- a dedicated Cloud Storage archive bucket for sensitive Cloud Audit Logs;
+- a Cloud Logging sink for IAM, Workload Identity, KMS, Secret Manager,
+  Confidential Space VM, and Cloud SQL admin activity;
+- a Cloud Monitoring log-match alert policy for sensitive admin mutations such
+  as `SetIamPolicy`, Workload Identity provider updates, KMS/Secret Manager
+  mutations, VM metadata/service-account changes, and service-account key
+  creation;
+- an optional email notification channel when `audit_alert_email` is set.
+
+For stronger historical evidence, set `audit_data_access_logs_enabled = true`.
+That enables Data Access audit logs for Cloud KMS and Secret Manager and routes
+those logs into the same archive. This can increase log volume, but it lets
+reviewers inspect later KMS and secret access, not only policy changes.
+
+Set `audit_log_archive_retention_locked = true` only after testing. Locking the
+Cloud Storage retention policy is irreversible for the configured retention
+period.
+
+The release verifier automatically requires these audit resources when
+`TF_VAR_audit_monitoring_enabled=true`; the generated deployment attestation
+then includes evidence that the archive sink and alert policy exist. When
+`TF_VAR_audit_data_access_logs_enabled=true`, it also verifies that KMS and
+Secret Manager Data Access audit logs are enabled.
 
 For the fully managed database path, also set:
 

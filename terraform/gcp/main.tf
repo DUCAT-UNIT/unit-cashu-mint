@@ -258,6 +258,48 @@ variable "manage_project_services" {
   default     = true
 }
 
+variable "audit_monitoring_enabled" {
+  description = "Create Cloud Audit Logs archive and alerting for sensitive post-deploy changes."
+  type        = bool
+  default     = false
+}
+
+variable "audit_alert_email" {
+  description = "Optional email notification channel for security audit alerts. Leave empty to create the alert policy without a notification channel."
+  type        = string
+  default     = ""
+}
+
+variable "audit_log_archive_bucket_name" {
+  description = "Optional Cloud Storage bucket name for archived security audit logs. Defaults to <project>-<name_prefix>-audit-logs."
+  type        = string
+  default     = ""
+}
+
+variable "audit_log_archive_location" {
+  description = "Cloud Storage location for archived audit logs. Defaults to the deployment region."
+  type        = string
+  default     = ""
+}
+
+variable "audit_log_retention_days" {
+  description = "Minimum retention period for archived audit log objects."
+  type        = number
+  default     = 365
+}
+
+variable "audit_log_archive_retention_locked" {
+  description = "Lock the audit log bucket retention policy. This is irreversible for the configured retention period."
+  type        = bool
+  default     = false
+}
+
+variable "audit_data_access_logs_enabled" {
+  description = "Enable project Data Access audit logs for Cloud KMS and Secret Manager, then include them in the audit archive."
+  type        = bool
+  default     = false
+}
+
 locals {
   name_prefix            = "ducat-mint-${var.environment}"
   use_confidential_space = var.deployment_mode == "confidential-space"
@@ -311,6 +353,58 @@ locals {
     environment = var.environment
     managed_by  = "terraform"
   }
+  audit_log_archive_bucket_name = (
+    var.audit_log_archive_bucket_name != ""
+    ? var.audit_log_archive_bucket_name
+    : "${var.project_id}-${local.name_prefix}-audit-logs"
+  )
+  audit_log_archive_location = (
+    var.audit_log_archive_location != ""
+    ? var.audit_log_archive_location
+    : upper(var.region)
+  )
+  audit_admin_activity_filter = trimspace(<<-EOT
+    log_id("cloudaudit.googleapis.com/activity")
+    AND (
+      protoPayload.methodName:"SetIamPolicy"
+      OR protoPayload.methodName:"CreateWorkloadIdentityPool"
+      OR protoPayload.methodName:"UpdateWorkloadIdentityPool"
+      OR protoPayload.methodName:"DeleteWorkloadIdentityPool"
+      OR protoPayload.methodName:"CreateWorkloadIdentityPoolProvider"
+      OR protoPayload.methodName:"UpdateWorkloadIdentityPoolProvider"
+      OR protoPayload.methodName:"DeleteWorkloadIdentityPoolProvider"
+      OR protoPayload.methodName:"UpdateCryptoKey"
+      OR protoPayload.methodName:"DestroyCryptoKeyVersion"
+      OR protoPayload.methodName:"RestoreCryptoKeyVersion"
+      OR protoPayload.methodName:"UpdateSecret"
+      OR protoPayload.methodName:"AddSecretVersion"
+      OR protoPayload.methodName:"DestroySecretVersion"
+      OR protoPayload.methodName:"DisableSecretVersion"
+      OR protoPayload.methodName:"EnableSecretVersion"
+      OR protoPayload.methodName:"instances.insert"
+      OR protoPayload.methodName:"instances.delete"
+      OR protoPayload.methodName:"instances.setMetadata"
+      OR protoPayload.methodName:"instances.setServiceAccount"
+      OR protoPayload.methodName:"instances.stop"
+      OR protoPayload.methodName:"instances.start"
+      OR protoPayload.methodName:"sql.instances.update"
+      OR protoPayload.methodName:"CreateServiceAccountKey"
+    )
+  EOT
+  )
+  audit_data_access_filter = trimspace(<<-EOT
+    log_id("cloudaudit.googleapis.com/data_access")
+    AND (
+      protoPayload.serviceName="cloudkms.googleapis.com"
+      OR protoPayload.serviceName="secretmanager.googleapis.com"
+    )
+  EOT
+  )
+  audit_archive_filter = (
+    var.audit_data_access_logs_enabled
+    ? "(${local.audit_admin_activity_filter}) OR (${local.audit_data_access_filter})"
+    : local.audit_admin_activity_filter
+  )
   required_project_services = toset([
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
@@ -320,6 +414,7 @@ locals {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "logging.googleapis.com",
+    "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
     "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
@@ -333,6 +428,128 @@ resource "google_project_service" "required" {
   service  = each.value
 
   disable_on_destroy = false
+}
+
+resource "google_storage_bucket" "audit_logs" {
+  count                       = var.audit_monitoring_enabled ? 1 : 0
+  name                        = local.audit_log_archive_bucket_name
+  location                    = local.audit_log_archive_location
+  force_destroy               = false
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  labels                      = local.labels
+
+  versioning {
+    enabled = true
+  }
+
+  retention_policy {
+    retention_period = var.audit_log_retention_days * 86400
+    is_locked        = var.audit_log_archive_retention_locked
+  }
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_logging_project_sink" "security_audit_archive" {
+  count                  = var.audit_monitoring_enabled ? 1 : 0
+  name                   = "${local.name_prefix}-security-audit-archive"
+  destination            = "storage.googleapis.com/${google_storage_bucket.audit_logs[0].name}"
+  filter                 = local.audit_archive_filter
+  unique_writer_identity = true
+
+  depends_on = [
+    google_project_service.required,
+    google_storage_bucket.audit_logs,
+  ]
+}
+
+resource "google_storage_bucket_iam_member" "audit_log_sink_writer" {
+  count  = var.audit_monitoring_enabled ? 1 : 0
+  bucket = google_storage_bucket.audit_logs[0].name
+  role   = "roles/storage.objectCreator"
+  member = google_logging_project_sink.security_audit_archive[0].writer_identity
+}
+
+resource "google_project_iam_audit_config" "cloudkms_data_access" {
+  count   = var.audit_monitoring_enabled && var.audit_data_access_logs_enabled ? 1 : 0
+  project = var.project_id
+  service = "cloudkms.googleapis.com"
+
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
+}
+
+resource "google_project_iam_audit_config" "secretmanager_data_access" {
+  count   = var.audit_monitoring_enabled && var.audit_data_access_logs_enabled ? 1 : 0
+  project = var.project_id
+  service = "secretmanager.googleapis.com"
+
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
+}
+
+resource "google_monitoring_notification_channel" "audit_email" {
+  count        = var.audit_monitoring_enabled && var.audit_alert_email != "" ? 1 : 0
+  display_name = "${local.name_prefix} security audit email"
+  type         = "email"
+  labels = {
+    email_address = var.audit_alert_email
+  }
+  enabled = true
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_monitoring_alert_policy" "security_admin_activity" {
+  count        = var.audit_monitoring_enabled ? 1 : 0
+  display_name = "${local.name_prefix} sensitive admin audit activity"
+  combiner     = "OR"
+  enabled      = true
+
+  notification_channels = (
+    var.audit_alert_email != ""
+    ? [google_monitoring_notification_channel.audit_email[0].name]
+    : []
+  )
+
+  conditions {
+    display_name = "Sensitive admin audit log entry"
+
+    condition_matched_log {
+      filter = local.audit_admin_activity_filter
+      label_extractors = {
+        method    = "EXTRACT(protoPayload.methodName)"
+        principal = "EXTRACT(protoPayload.authenticationInfo.principalEmail)"
+        resource  = "EXTRACT(protoPayload.resourceName)"
+      }
+    }
+  }
+
+  alert_strategy {
+    notification_rate_limit {
+      period = "300s"
+    }
+
+    auto_close = "604800s"
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Sensitive Ducat mint infrastructure changed. Review the audit log entry, confirm the actor, and rerun `npm run gcp:confidential-space:attest` against the live deployment."
+  }
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_compute_network" "mint" {
@@ -809,4 +1026,14 @@ output "managed_postgres_private_ip" {
 output "secret_manager_cmek_key_name" {
   description = "Cloud KMS key to use as the Secret Manager CMEK for the mint env secret."
   value       = google_kms_crypto_key.secret_manager.id
+}
+
+output "audit_log_archive_bucket" {
+  description = "Cloud Storage bucket that receives sensitive Cloud Audit Logs when audit monitoring is enabled."
+  value       = var.audit_monitoring_enabled ? google_storage_bucket.audit_logs[0].name : null
+}
+
+output "audit_alert_policy_name" {
+  description = "Cloud Monitoring alert policy for sensitive admin audit activity when audit monitoring is enabled."
+  value       = var.audit_monitoring_enabled ? google_monitoring_alert_policy.security_admin_activity[0].name : null
 }
