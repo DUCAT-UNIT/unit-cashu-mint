@@ -11,7 +11,7 @@ const baseConfig = {
   MAX_MELT_AMOUNT: 1000000,
   MINT_CONFIRMATIONS: 2,
   MINT_NAME: 'Test Mint',
-  MINT_PUBKEY: '02' + '11'.repeat(32),
+  MINT_PUBKEY: '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
   MINT_DESCRIPTION: 'Test mint',
 }
 
@@ -84,5 +84,11 @@ describe('buildMintInfo', () => {
     const info = buildMintInfo(baseConfig)
 
     expect(info.version).toBe('ducat-mint/0.1.0')
+  })
+
+  it('advertises a valid compressed mint pubkey', () => {
+    const info = buildMintInfo(baseConfig)
+
+    expect(info.pubkey).toMatch(/^(02|03)[0-9a-f]{64}$/)
   })
 })
