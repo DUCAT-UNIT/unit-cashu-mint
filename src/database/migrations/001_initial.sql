@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS melt_quotes (
   fee_paid BIGINT,
   fee BIGINT,
   estimated_blocks INTEGER,
-  outpoint TEXT
+  outpoint TEXT,
+  change JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_melt_quotes_state ON melt_quotes(state, expiry);

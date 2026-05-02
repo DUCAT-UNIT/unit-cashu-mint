@@ -7,7 +7,7 @@ import {
   MeltQuoteRow,
   meltQuoteFromRow,
 } from '../../core/models/Quote.js'
-import { MintQuoteState, MeltQuoteState } from '../../types/cashu.js'
+import { BlindSignature, MintQuoteState, MeltQuoteState } from '../../types/cashu.js'
 import { QuoteNotFoundError } from '../../utils/errors.js'
 
 export class QuoteRepository {
@@ -149,9 +149,9 @@ export class QuoteRepository {
       `
       INSERT INTO melt_quotes (
         id, amount, fee_reserve, unit, rune_id, method, request, state, expiry,
-        created_at, fee, estimated_blocks, outpoint
+        created_at, fee, estimated_blocks, outpoint, change
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
       RETURNING *
     `,
       [
@@ -168,6 +168,7 @@ export class QuoteRepository {
         quote.fee ?? null,
         quote.estimated_blocks ?? null,
         quote.outpoint ?? null,
+        quote.change ? JSON.stringify(quote.change) : null,
       ]
     )
 
@@ -225,7 +226,8 @@ export class QuoteRepository {
     state: MeltQuoteState,
     txid?: string,
     fee_paid?: number,
-    outpoint?: string
+    outpoint?: string,
+    change?: BlindSignature[]
   ): Promise<void> {
     const paid_at = state === 'PAID' ? Date.now() : undefined
 
@@ -236,10 +238,19 @@ export class QuoteRepository {
           paid_at = COALESCE($2, paid_at),
           txid = COALESCE($3, txid),
           outpoint = COALESCE($5, outpoint),
-          fee_paid = COALESCE($4, fee_paid)
-      WHERE id = $6
+          fee_paid = COALESCE($4, fee_paid),
+          change = COALESCE($6::jsonb, change)
+      WHERE id = $7
     `,
-      [state, paid_at ?? null, txid ?? null, fee_paid ?? null, outpoint ?? null, id]
+      [
+        state,
+        paid_at ?? null,
+        txid ?? null,
+        fee_paid ?? null,
+        outpoint ?? null,
+        change ? JSON.stringify(change) : null,
+        id,
+      ]
     )
   }
 

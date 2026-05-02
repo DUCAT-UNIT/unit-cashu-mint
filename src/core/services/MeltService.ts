@@ -183,6 +183,7 @@ export class MeltService {
       unit: quote.unit,
       txid: quote.txid,
       payment_preimage: quote.method === 'bolt11' ? quote.txid ?? null : undefined,
+      change: quote.change,
     }
   }
 
@@ -299,7 +300,8 @@ export class MeltService {
         nextState,
         result.txid,
         result.fee_paid,
-        outpoint
+        outpoint,
+        change
       )
       if (quote.method === 'bolt11') {
         notificationBus.publish('bolt11_melt_quote', {

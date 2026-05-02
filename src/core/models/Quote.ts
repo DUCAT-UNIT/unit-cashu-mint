@@ -1,4 +1,4 @@
-import { MintQuoteState, MeltQuoteState } from '../../types/cashu.js'
+import { BlindSignature, MintQuoteState, MeltQuoteState } from '../../types/cashu.js'
 
 export interface MintQuote {
   id: string // Quote ID
@@ -73,6 +73,7 @@ export interface MeltQuote {
   fee?: number
   estimated_blocks?: number
   outpoint?: string
+  change?: BlindSignature[]
 }
 
 export interface MeltQuoteRow {
@@ -92,9 +93,14 @@ export interface MeltQuoteRow {
   fee: bigint | null
   estimated_blocks: number | null
   outpoint: string | null
+  change?: BlindSignature[] | string | null
 }
 
 export function meltQuoteFromRow(row: MeltQuoteRow): MeltQuote {
+  const change = typeof row.change === 'string'
+    ? JSON.parse(row.change) as BlindSignature[]
+    : row.change ?? undefined
+
   return {
     id: row.id,
     amount: Number(row.amount),
@@ -112,5 +118,6 @@ export function meltQuoteFromRow(row: MeltQuoteRow): MeltQuote {
     fee: row.fee ? Number(row.fee) : undefined,
     estimated_blocks: row.estimated_blocks ?? undefined,
     outpoint: row.outpoint ?? undefined,
+    change,
   }
 }
