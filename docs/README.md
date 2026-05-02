@@ -2,14 +2,10 @@
 
 | File | What it covers |
 |---|---|
-| [architecture.md](./architecture.md) | Components, trust boundaries, request flow |
-| [security.md](./security.md) | KMS + PCR0 sealing, rotation flow, known gaps |
-| [enclave.md](./enclave.md) | Nitro Enclave design notes |
-| [enclave-deployment.md](./enclave-deployment.md) | Step-by-step enclave deployment |
-| [deployment.md](./deployment.md) | General deployment / infra notes |
-| [gcp-confidential-deployment.md](./gcp-confidential-deployment.md) | GCP Confidential VM deployment |
+| [security.md](./security.md) | GCP Confidential Space trust model, update flow, audit monitoring, and known gaps |
+| [gcp-confidential-deployment.md](./gcp-confidential-deployment.md) | GCP Confidential VM and Confidential Space deployment |
+| [architecture.md](./architecture.md) | Components, request flow, and protocol architecture |
 | [runes-integration.md](./runes-integration.md) | Runes backend integration |
-| [nitro-integration-plan.md](./nitro-integration-plan.md) | Working notes from the Nitro migration |
 | [plan.md](./plan.md) | Working notes |
 
-Start with `architecture.md` and `security.md`.
+Start with `security.md`, then `gcp-confidential-deployment.md`.

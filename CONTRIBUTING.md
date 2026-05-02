@@ -1,52 +1,55 @@
 # Contributing
 
-## Local dev loop
+## Local Dev Loop
 
 ```bash
 git clone <repo> && cd mint-server
 npm install
-cp .env.example .env       # edit values for your local LN backend
-docker-compose up -d        # postgres, regtest bitcoin, etc.
-npm run dev                 # mint on :3338
-npm test                    # unit
-npm run test:integration    # integration
+cp .env.example .env
+docker-compose up -d
+npm run dev
+npm test
+npm run test:integration
 ```
 
 ## Layout
 
-```
-src/         mint application (TypeScript)
-enclave/     enclave-side image build (Dockerfile, nginx, entrypoint)
-parent/      parent EC2 scripts, systemd units, KMS policy, vsock proxies
-terraform/   AWS infra (VPC, EC2, IAM, KMS bootstrap)
-scripts/     dev/ops one-offs
-docs/        architecture + security + deployment docs
-examples/    sample configs (nginx, env, tfvars)
-tests/       unit + integration
+```text
+src/                     mint application (TypeScript)
+gcp-confidential-space/  Confidential Space container entrypoint and Caddy config
+terraform/gcp/           GCP infrastructure
+scripts/                 dev, build, deploy, and attestation helpers
+docs/                    architecture, security, and deployment docs
+tests/                   unit, integration, and compatibility coverage
 ```
 
-## Where to read first
+## Where To Read First
 
-If you're reviewing this for security/architecture rather than running it:
+If you are reviewing this for security or architecture:
 
-1. [`docs/architecture.md`](./docs/architecture.md) — components and request flow
-2. [`docs/security.md`](./docs/security.md) — trust model, KMS+PCR0 sealing, gaps
-3. [`parent/kms-policy.json`](./parent/kms-policy.json) — the actual lock
-4. [`enclave/nginx.conf`](./enclave/nginx.conf) — TLS terminates here
+1. [`docs/security.md`](./docs/security.md) - trust model, update flow, audit
+   monitoring, and known gaps
+2. [`docs/gcp-confidential-deployment.md`](./docs/gcp-confidential-deployment.md)
+   - deployment and release workflow
+3. [`terraform/gcp/main.tf`](./terraform/gcp/main.tf) - the actual GCP resource
+   and IAM wiring
+4. [`scripts/gcp-confidential-space-attest.mjs`](./scripts/gcp-confidential-space-attest.mjs)
+   - the live deployment verifier
 
 ## Conventions
 
-- TypeScript, ESM, Node 20
+- TypeScript, ESM, Node 22
 - Vitest for tests
-- Prettier + ESLint configured; CI runs both
-- Keep `parent/`, `enclave/`, and `terraform/` changes in their own commits
-  when possible — they each touch different deploy machinery
+- Prettier and ESLint configured; CI runs both
+- Keep Terraform, release workflow, and application changes separated when the
+  separation makes review easier
 
 ## Deploy
 
-`main` triggers the enclave deploy via GitHub Actions OIDC. Path-filtered to
-`src/**`, `enclave/**`, `package*.json`. Doc-only changes don't redeploy.
+`main` triggers the GCP Confidential Space release workflow for application,
+container, Terraform, package, and release workflow changes.
 
-A new enclave build produces a new PCR0; the KMS policy must be updated to
-include it before the new enclave can unseal secrets. See
-[`docs/security.md`](./docs/security.md#updating-the-enclave-without-exposing-the-key).
+The workflow builds a new container image, pins the digest in Terraform,
+applies the GCP update, restarts the Confidential Space VM, verifies the live
+deployment, and signs a deployment security attestation. See
+[`docs/security.md`](./docs/security.md#updating-without-revealing-keys).
