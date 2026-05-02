@@ -15,6 +15,8 @@ what the attestations claim.
 - Key encryption: app-level Cloud KMS for newly written keyset private keys
 - Secret at-rest encryption: Secret Manager CMEK
 - TLS: Caddy terminates TLS inside the Confidential Space workload container
+- TLS persistence: Caddy ACME account/certificate storage is persisted in a
+  separate CMEK-protected Secret Manager secret with digest-bound access
 
 ## Protocol And Wallet Compatibility
 
@@ -41,20 +43,22 @@ should use `LIGHTNING_BACKEND=lnbits` with `LNBITS_URL`,
 Current deployed release commit:
 
 ```text
-2e42902c9be24dbea4df08f9f0b6dd631685d9ff
+a66127929852d17cea4f09af30e3f33ee885928b
 ```
 
 Green checks on that commit:
 
-- CI: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141716`
-- Cashu Interop: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141722`
-- Cashu Upstream Compatibility: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141721`
-- GCP Confidential Space Release: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141719`
+- CI: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25255442064`
+- Cashu Interop: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25255442063`
+- Cashu Upstream Compatibility: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25255442057`
+- GCP Confidential Space Release: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25255442059`
+- GCP Confidential Space Audit Monitor: `https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25255588322`
 
-Latest dev redeploy after metadata, audit, and guarded dev Lightning updates:
+Latest dev redeploy after compatibility, Confidential Space, TLS persistence,
+audit, and guarded dev Lightning updates:
 
 ```text
-https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25254141719
+https://github.com/DUCAT-UNIT/unit-cashu-mint/actions/runs/25255442059
 ```
 
 ## Secure Update Flow
@@ -94,3 +98,9 @@ Audit monitoring is enabled for the dev project:
 The deployment attestation verifier checks that the audit archive exists and,
 when Data Access logging is enabled, that Cloud KMS and Secret Manager data
 access audit configs are present on the project.
+
+The scheduled audit monitor reruns the live deployment verifier and checks
+recent sensitive Admin Activity logs. It allows the configured deploy service
+account and the expected anonymous `AddSecretVersion` events for the Caddy ACME
+storage secret, while still failing on other unapproved IAM, Workload Identity,
+KMS, Secret Manager, VM, and Cloud SQL admin changes.
