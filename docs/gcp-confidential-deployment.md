@@ -15,6 +15,7 @@ This module supports two GCP deployment modes:
 ## What Terraform Creates
 
 - VPC, subnet, firewall, and static IP
+- Required GCP project APIs, unless `manage_project_services = false`
 - Confidential VM with Shielded VM enabled
 - Runtime service account
 - Cloud KMS key for encrypted boot disk and application keyset encryption

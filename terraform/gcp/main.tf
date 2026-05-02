@@ -252,6 +252,12 @@ variable "db_sslmode" {
   default     = "disable"
 }
 
+variable "manage_project_services" {
+  description = "Enable the GCP APIs required by this module. Disable if APIs are managed outside Terraform."
+  type        = bool
+  default     = true
+}
+
 locals {
   name_prefix            = "ducat-mint-${var.environment}"
   use_confidential_space = var.deployment_mode == "confidential-space"
@@ -305,11 +311,35 @@ locals {
     environment = var.environment
     managed_by  = "terraform"
   }
+  required_project_services = toset([
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "cloudkms.googleapis.com",
+    "compute.googleapis.com",
+    "confidentialcomputing.googleapis.com",
+    "iam.googleapis.com",
+    "iamcredentials.googleapis.com",
+    "logging.googleapis.com",
+    "secretmanager.googleapis.com",
+    "servicenetworking.googleapis.com",
+    "sqladmin.googleapis.com",
+    "storage.googleapis.com",
+  ])
+}
+
+resource "google_project_service" "required" {
+  for_each = var.manage_project_services ? local.required_project_services : toset([])
+  project  = var.project_id
+  service  = each.value
+
+  disable_on_destroy = false
 }
 
 resource "google_compute_network" "mint" {
   name                    = "${local.name_prefix}-network"
   auto_create_subnetworks = false
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_compute_subnetwork" "mint" {
@@ -331,6 +361,8 @@ resource "google_artifact_registry_repository" "mint" {
   description   = "Ducat mint Confidential Space workload images"
   format        = "DOCKER"
   labels        = local.labels
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_compute_global_address" "private_services" {
@@ -426,11 +458,15 @@ resource "google_compute_firewall" "ssh" {
 resource "google_service_account" "mint" {
   account_id   = "${local.name_prefix}-sa"
   display_name = "Ducat mint Confidential VM service account"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_kms_key_ring" "mint" {
   name     = "${local.name_prefix}-keyring"
   location = var.region
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_kms_crypto_key" "mint" {
@@ -442,6 +478,8 @@ resource "google_kms_crypto_key" "mint" {
 resource "google_kms_key_ring" "secret_manager" {
   name     = "${local.name_prefix}-secret-manager-keyring"
   location = "global"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_kms_crypto_key" "secret_manager" {
@@ -452,12 +490,16 @@ resource "google_kms_crypto_key" "secret_manager" {
 
 data "google_secret_manager_secret" "mint_env" {
   secret_id = var.mint_env_secret_id
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_service_identity" "secret_manager" {
   provider = google-beta
   project  = var.project_id
   service  = "secretmanager.googleapis.com"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_service_identity" "cloud_sql" {
@@ -465,6 +507,8 @@ resource "google_project_service_identity" "cloud_sql" {
   provider = google-beta
   project  = var.project_id
   service  = "sqladmin.googleapis.com"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_secret_manager_secret_iam_member" "mint_env_accessor" {
