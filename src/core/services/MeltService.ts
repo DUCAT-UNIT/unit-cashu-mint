@@ -207,6 +207,25 @@ export class MeltService {
       throw new Error(`Quote ${quoteId} has expired`)
     }
 
+    if (quote.method === 'bolt11') {
+      if (quote.state === 'PAID') {
+        throw new MintError('Request already paid', 20006, 'Request already paid')
+      }
+      if (quote.state === 'PENDING') {
+        throw new MintError('Quote is pending', 20005, 'Quote is pending')
+      }
+
+      const settledQuote = await this.quoteRepo.findSettledMeltQuoteByRequest(
+        quote.request,
+        quote.method,
+        quote.unit,
+        quote.id
+      )
+      if (settledQuote) {
+        throw new MintError('Request already paid', 20006, 'Request already paid')
+      }
+    }
+
     // 3. Verify input amounts cover quote amount and advertised fee reserve.
     const inputAmount = this.mintCrypto.sumProofs(inputs)
     const inputFees = await this.mintCrypto.calculateInputFees(inputs)

@@ -100,6 +100,7 @@ describe('MeltService', () => {
         state: 'UNPAID',
         expiry: Math.floor(Date.now() / 1000) + 3600,
       }),
+      findSettledMeltQuoteByRequest: vi.fn().mockResolvedValue(null),
       updateMeltQuoteState: vi.fn(),
     } as unknown as QuoteRepository
     const proofRepo = {
@@ -160,6 +161,7 @@ describe('MeltService', () => {
         state: 'UNPAID',
         expiry: Math.floor(Date.now() / 1000) + 3600,
       }),
+      findSettledMeltQuoteByRequest: vi.fn().mockResolvedValue(null),
       updateMeltQuoteState: vi.fn(),
     } as unknown as QuoteRepository
     const proofRepo = {
@@ -185,6 +187,65 @@ describe('MeltService', () => {
       )
     ).rejects.toThrow('Insufficient blank outputs')
 
+    expect(proofRepo.markSpent).not.toHaveBeenCalled()
+  })
+
+  it('rejects a bolt11 melt when the request was already settled by another quote', async () => {
+    const quoteId = 'second-quote'
+    const quoteRepo = {
+      findMeltQuoteByIdOrThrow: vi.fn().mockResolvedValue({
+        id: quoteId,
+        amount: 10,
+        unit: 'sat',
+        rune_id: 'btc:0',
+        method: 'bolt11',
+        request: 'lnbcrt100n1pn0r3ve',
+        fee_reserve: 2,
+        state: 'UNPAID',
+        expiry: Math.floor(Date.now() / 1000) + 3600,
+      }),
+      findSettledMeltQuoteByRequest: vi.fn().mockResolvedValue({
+        id: 'first-quote',
+        amount: 10,
+        unit: 'sat',
+        rune_id: 'btc:0',
+        method: 'bolt11',
+        request: 'lnbcrt100n1pn0r3ve',
+        fee_reserve: 2,
+        state: 'PAID',
+        expiry: Math.floor(Date.now() / 1000) + 3600,
+        created_at: Date.now(),
+      }),
+      updateMeltQuoteState: vi.fn(),
+    } as unknown as QuoteRepository
+    const proofRepo = {
+      markSpent: vi.fn(),
+      deleteByTransactionId: vi.fn(),
+    } as unknown as ProofRepository
+    const mintCrypto = {
+      sumProofs: vi.fn(),
+      calculateInputFees: vi.fn(),
+      verifyProofsOrThrow: vi.fn(),
+      hashSecret: vi.fn(),
+      signBlindedMessages: vi.fn(),
+    } as unknown as MintCrypto
+    const registry = new BackendRegistry()
+    const backend = createMockBackend('sat', 'bolt11')
+    registry.register(backend)
+    const service = new MeltService(mintCrypto, quoteRepo, proofRepo, registry)
+
+    await expect(
+      service.meltTokens(
+        quoteId,
+        [{ id: 'keyset123', amount: 12, secret: 'secret', C: '02proof' }],
+        []
+      )
+    ).rejects.toMatchObject({
+      code: 20006,
+      message: 'Request already paid',
+    })
+
+    expect(backend.withdraw).not.toHaveBeenCalled()
     expect(proofRepo.markSpent).not.toHaveBeenCalled()
   })
 })

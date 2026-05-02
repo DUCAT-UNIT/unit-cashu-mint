@@ -192,6 +192,34 @@ export class QuoteRepository {
     return quote
   }
 
+  async findSettledMeltQuoteByRequest(
+    request: string,
+    method: string,
+    unit: string,
+    excludeId?: string
+  ): Promise<MeltQuote | null> {
+    const result = await query<MeltQuoteRow>(
+      `
+      SELECT *
+      FROM melt_quotes
+      WHERE request = $1
+        AND method = $2
+        AND unit = $3
+        AND state IN ($4, $5)
+        AND ($6::text IS NULL OR id <> $6)
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+      [request, method, unit, 'PENDING', 'PAID', excludeId ?? null]
+    )
+
+    if (result.rows.length === 0) {
+      return null
+    }
+
+    return meltQuoteFromRow(result.rows[0])
+  }
+
   async updateMeltQuoteState(
     id: string,
     state: MeltQuoteState,
