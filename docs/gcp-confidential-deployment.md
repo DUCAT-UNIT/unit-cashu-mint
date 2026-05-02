@@ -21,6 +21,8 @@ This module supports two GCP deployment modes:
 - Cloud KMS key for encrypted boot disk and application keyset encryption
 - Cloud KMS key for Secret Manager CMEK
 - IAM wiring for the Secret Manager secret and KMS keys
+- Optional CMEK-protected Secret Manager secret for Caddy ACME storage in the
+  Confidential Space path
 - Optional Artifact Registry Docker repository for the workload image
 - Optional private Cloud SQL for PostgreSQL instance for the Confidential Space
   path
@@ -146,6 +148,13 @@ terraform apply
 Point the DNS A record for `domain_name` to the `public_ip` output before
 Caddy requests the certificate.
 
+When `confidential_space_caddy_acme_storage_enabled = true`, Terraform creates
+a separate Secret Manager secret for Caddy ACME account and certificate
+storage. The attested container restores that storage before Caddy starts and
+periodically snapshots changed storage back into Secret Manager. This keeps TLS
+termination inside Confidential Space while avoiding duplicate ACME issuance on
+routine VM stop/start cycles.
+
 ## Confidential Space Build
 
 If Docker and gcloud are available locally, build and push the workload
@@ -182,6 +191,9 @@ deployment_mode = "confidential-space"
 confidential_space_image_reference = "us-central1-docker.pkg.dev/PROJECT_ID/ducat-mint/mint-server@sha256:..."
 confidential_space_image_digest    = "sha256:..."
 confidential_space_image_family    = "confidential-space"
+
+confidential_space_caddy_acme_storage_enabled       = true
+confidential_space_caddy_acme_sync_interval_seconds = 60
 ```
 
 The digest is part of the Workload Identity Provider attestation condition and
@@ -216,8 +228,11 @@ It checks live GCP state instead:
   principalSet;
 - the runtime VM service account has no direct app-KMS decrypt or Secret
   Manager accessor role;
-- Secret Manager uses CMEK, Cloud SQL is private-IP only and CMEK encrypted,
-  and the public mint endpoints are healthy.
+- Secret Manager uses CMEK;
+- Caddy ACME storage uses a separate CMEK-protected secret with digest-bound
+  access/version-add IAM;
+- Cloud SQL is private-IP only and CMEK encrypted;
+- the public mint endpoints are healthy.
 
 The workflow needs these GitHub environment/repository variables:
 
@@ -242,7 +257,9 @@ Optional variables include `GCP_REGION`, `GCP_ZONE`,
 `GCP_TF_STATE_PREFIX`, `GCP_AUDIT_ALERT_EMAIL`,
 `GCP_AUDIT_LOG_ARCHIVE_BUCKET_NAME`, `GCP_AUDIT_LOG_RETENTION_DAYS`,
 `GCP_AUDIT_LOG_ARCHIVE_RETENTION_LOCKED`, and
-`GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED`.
+`GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED`, `GCP_CADDY_ACME_STORAGE_ENABLED`,
+`GCP_CADDY_ACME_SECRET_ID`, `GCP_CADDY_ACME_SYNC_INTERVAL_SECONDS`, and
+`GCP_CADDY_ACME_MAX_BYTES`.
 
 The CI deploy expects Terraform state in a GCS backend. For the already-running
 dev deployment, migrate the local state into the configured state bucket before
@@ -277,6 +294,21 @@ The release verifier automatically requires these audit resources when
 then includes evidence that the archive sink and alert policy exist. When
 `TF_VAR_audit_data_access_logs_enabled=true`, it also verifies that KMS and
 Secret Manager Data Access audit logs are enabled.
+
+`.github/workflows/gcp-confidential-space-audit-monitor.yml` runs on a
+six-hour schedule and can also be dispatched manually. It reruns the live
+deployment verifier, then scans recent Admin Activity audit logs for sensitive
+changes. The configured deploy service account is allowed; unexpected
+principals fail the workflow and leave a JSON/markdown evidence artifact for
+review.
+
+Use `GCP_AUDIT_ALLOWED_PRINCIPALS` as a comma-separated allowlist for approved
+break-glass operators whose sensitive admin activity should be recorded but not
+fail the scheduled monitor.
+
+Use `GCP_AUDIT_BASELINE_TIME` as an RFC3339 timestamp when enabling the monitor
+for an existing environment. The first scheduled checks ignore older setup
+events and fail only on sensitive admin activity after that baseline.
 
 For the fully managed database path, also set:
 

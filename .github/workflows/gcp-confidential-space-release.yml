@@ -70,6 +70,10 @@ env:
   TF_VAR_confidential_space_image_family: ${{ vars.GCP_CONFIDENTIAL_SPACE_IMAGE_FAMILY || 'confidential-space' }}
   TF_VAR_confidential_instance_type: ${{ vars.GCP_CONFIDENTIAL_INSTANCE_TYPE || 'SEV' }}
   TF_VAR_machine_type: ${{ vars.GCP_CONFIDENTIAL_MACHINE_TYPE || 'n2d-standard-4' }}
+  TF_VAR_confidential_space_caddy_acme_storage_enabled: ${{ vars.GCP_CADDY_ACME_STORAGE_ENABLED || 'true' }}
+  TF_VAR_confidential_space_caddy_acme_secret_id: ${{ vars.GCP_CADDY_ACME_SECRET_ID || '' }}
+  TF_VAR_confidential_space_caddy_acme_sync_interval_seconds: ${{ vars.GCP_CADDY_ACME_SYNC_INTERVAL_SECONDS || '60' }}
+  TF_VAR_confidential_space_caddy_acme_max_bytes: ${{ vars.GCP_CADDY_ACME_MAX_BYTES || '60000' }}
   TF_VAR_mint_env_secret_id: ${{ vars.GCP_MINT_ENV_SECRET_ID || 'ducat-mint-env' }}
   TF_VAR_create_artifact_registry_repository: ${{ vars.GCP_CREATE_ARTIFACT_REGISTRY_REPOSITORY || 'false' }}
   TF_VAR_artifact_registry_location: ${{ vars.GCP_ARTIFACT_REGISTRY_LOCATION || vars.GCP_REGION || 'us-central1' }}
@@ -169,6 +173,7 @@ jobs:
           npm run build
           node --check scripts/gcp-confidential-space-build.mjs
           node --check scripts/gcp-confidential-space-attest.mjs
+          node --check scripts/gcp-confidential-space-caddy-storage.mjs
           bash -n gcp-confidential-space/entrypoint.sh
 
       - name: Authenticate to Google Cloud

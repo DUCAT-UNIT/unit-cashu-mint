@@ -1,0 +1,169 @@
+name: GCP Confidential Space Audit Monitor
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Terraform environment name, for example dev or prod.
+        required: true
+        default: dev
+        type: string
+      lookback_minutes:
+        description: Audit log lookback window.
+        required: true
+        default: '1440'
+        type: string
+      fail_on_findings:
+        description: Fail the workflow when unexpected sensitive admin activity is found.
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-confidential-space-audit-${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  GCP_ZONE: ${{ vars.GCP_ZONE || 'us-central1-a' }}
+  ENVIRONMENT_NAME: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
+  DOMAIN_NAME: ${{ vars.GCP_MINT_DOMAIN_NAME }}
+  AUDIT_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || vars.GCP_AUDIT_LOOKBACK_MINUTES || '1440' }}
+  AUDIT_FAIL_ON_FINDINGS: ${{ inputs.fail_on_findings }}
+  AUDIT_ALLOWED_PRINCIPALS: ${{ vars.GCP_AUDIT_ALLOWED_PRINCIPALS || '' }}
+  AUDIT_BASELINE_TIME: ${{ vars.GCP_AUDIT_BASELINE_TIME || '' }}
+  GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+  TF_VAR_region: ${{ vars.GCP_REGION || 'us-central1' }}
+  TF_VAR_zone: ${{ vars.GCP_ZONE || 'us-central1-a' }}
+  TF_VAR_environment: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
+  TF_VAR_domain_name: ${{ vars.GCP_MINT_DOMAIN_NAME }}
+  TF_VAR_mint_env_secret_id: ${{ vars.GCP_MINT_ENV_SECRET_ID || 'ducat-mint-env' }}
+  TF_VAR_managed_postgres_enabled: ${{ vars.GCP_MANAGED_POSTGRES_ENABLED || 'true' }}
+  TF_VAR_confidential_instance_type: ${{ vars.GCP_CONFIDENTIAL_INSTANCE_TYPE || 'SEV' }}
+  TF_VAR_audit_monitoring_enabled: ${{ vars.GCP_AUDIT_MONITORING_ENABLED || 'true' }}
+  TF_VAR_audit_log_archive_bucket_name: ${{ vars.GCP_AUDIT_LOG_ARCHIVE_BUCKET_NAME || '' }}
+  TF_VAR_audit_data_access_logs_enabled: ${{ vars.GCP_AUDIT_DATA_ACCESS_LOGS_ENABLED || 'false' }}
+  TF_VAR_confidential_space_caddy_acme_storage_enabled: ${{ vars.GCP_CADDY_ACME_STORAGE_ENABLED || 'true' }}
+  TF_VAR_confidential_space_caddy_acme_secret_id: ${{ vars.GCP_CADDY_ACME_SECRET_ID || '' }}
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
+    outputs:
+      configured: ${{ steps.config.outputs.configured }}
+
+    env:
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+
+    steps:
+      - name: Check monitor configuration
+        id: config
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            GCP_PROJECT_ID \
+            DOMAIN_NAME \
+            GCP_WORKLOAD_IDENTITY_PROVIDER \
+            GCP_DEPLOY_SERVICE_ACCOUNT; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## GCP Confidential Space audit monitor not configured"
+              echo ""
+              echo "Missing required repository/environment configuration:"
+              for name in "${missing[@]}"; do
+                echo "- \`${name}\`"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+  monitor:
+    name: Verify Live State And Audit Logs
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
+    environment: ${{ inputs.environment || vars.GCP_DEPLOY_ENVIRONMENT || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: true
+
+      - name: Static script checks
+        run: |
+          node --check scripts/gcp-confidential-space-attest.mjs
+          node --check scripts/gcp-confidential-space-audit-monitor.mjs
+
+      - name: Verify live Confidential Space posture
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          node scripts/gcp-confidential-space-attest.mjs \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --zone "$GCP_ZONE" \
+            --environment "$ENVIRONMENT_NAME" \
+            --domain "$DOMAIN_NAME" \
+            --output-dir audit-monitor
+          cat audit-monitor/gcp-confidential-space-deployment-attestation.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check recent sensitive admin activity
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          node scripts/gcp-confidential-space-audit-monitor.mjs \
+            --project "$GCP_PROJECT_ID" \
+            --environment "$ENVIRONMENT_NAME" \
+            --lookback-minutes "$AUDIT_LOOKBACK_MINUTES" \
+            --allowed-principal "$GCP_DEPLOY_SERVICE_ACCOUNT" \
+            --fail-on-findings "${AUDIT_FAIL_ON_FINDINGS:-true}" \
+            --output-dir audit-monitor
+          cat audit-monitor/gcp-confidential-space-audit-monitor.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload audit monitor artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcp-confidential-space-audit-monitor
+          path: |
+            audit-monitor/gcp-confidential-space-deployment-attestation.json
+            audit-monitor/gcp-confidential-space-deployment-attestation.json.sha256
+            audit-monitor/gcp-confidential-space-deployment-attestation.md
+            audit-monitor/gcp-confidential-space-audit-monitor.json
+            audit-monitor/gcp-confidential-space-audit-monitor.json.sha256
+            audit-monitor/gcp-confidential-space-audit-monitor.md
+          retention-days: 30

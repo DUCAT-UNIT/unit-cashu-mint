@@ -17,6 +17,8 @@ app key material.
 - Private Cloud SQL for mint state.
 - Secret Manager plus app-level Cloud KMS for runtime secrets and keyset
   encryption.
+- Caddy TLS termination inside Confidential Space, with ACME storage persisted
+  through an attestation-gated Secret Manager secret.
 
 ## Deploys From Main
 
@@ -39,6 +41,11 @@ When release preflight is configured, the workflow:
 
 If required GitHub environment variables or secrets are missing, preflight skips
 deployment without touching GCP.
+
+`.github/workflows/gcp-confidential-space-audit-monitor.yml` also runs on a
+schedule. It reruns the live verifier and fails when recent sensitive admin
+activity comes from a principal other than the configured deploy service
+account.
 
 ## Where The Attestation Is
 
@@ -66,7 +73,8 @@ same evidence under `claims`. The important claims are:
   "appKmsAccessIsBoundToAttestedImageDigest": true,
   "secretManagerAccessIsBoundToAttestedImageDigest": true,
   "runtimeServiceAccountHasNoDirectAppKmsAccess": true,
-  "runtimeServiceAccountHasNoDirectSecretAccess": true
+  "runtimeServiceAccountHasNoDirectSecretAccess": true,
+  "caddyAcmeStorageIsPersisted": true
 }
 ```
 

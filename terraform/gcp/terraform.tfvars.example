@@ -35,6 +35,13 @@ confidential_space_image_reference = "us-central1-docker.pkg.dev/your-gcp-projec
 confidential_space_image_digest    = "sha256:..."
 confidential_space_image_family    = "confidential-space"
 
+# Persists Caddy ACME account/certificate storage across Confidential Space
+# restarts through an attestation-gated, CMEK-protected Secret Manager secret.
+confidential_space_caddy_acme_storage_enabled        = true
+confidential_space_caddy_acme_secret_id              = ""
+confidential_space_caddy_acme_sync_interval_seconds  = 60
+confidential_space_caddy_acme_max_bytes              = 60000
+
 # Optional: create the Docker repository from Terraform. If you create it with
 # the build helper or manually, leave this false.
 create_artifact_registry_repository = false

@@ -180,6 +180,30 @@ variable "confidential_space_enable_caddy" {
   default     = true
 }
 
+variable "confidential_space_caddy_acme_storage_enabled" {
+  description = "Persist Caddy ACME storage in an attestation-gated Secret Manager secret to survive Confidential Space restarts."
+  type        = bool
+  default     = true
+}
+
+variable "confidential_space_caddy_acme_secret_id" {
+  description = "Optional Secret Manager secret ID for Caddy ACME storage. Defaults to <name_prefix>-caddy-acme."
+  type        = string
+  default     = ""
+}
+
+variable "confidential_space_caddy_acme_sync_interval_seconds" {
+  description = "How often the Confidential Space workload snapshots Caddy ACME storage into Secret Manager."
+  type        = number
+  default     = 60
+}
+
+variable "confidential_space_caddy_acme_max_bytes" {
+  description = "Maximum compressed Caddy ACME storage payload size accepted for Secret Manager versions."
+  type        = number
+  default     = 60000
+}
+
 variable "artifact_registry_location" {
   description = "Artifact Registry location for the Confidential Space container. Defaults to region when empty."
   type        = string
@@ -317,6 +341,12 @@ locals {
   confidential_space_provider_id  = var.confidential_space_workload_identity_provider_id
   confidential_space_wip_audience = "//iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${local.confidential_space_pool_id}/providers/${local.confidential_space_provider_id}"
   confidential_space_principal    = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${local.confidential_space_pool_id}/attribute.image_digest/${var.confidential_space_image_digest}"
+  caddy_acme_storage_enabled      = local.use_confidential_space && var.confidential_space_enable_caddy && var.confidential_space_caddy_acme_storage_enabled
+  caddy_acme_secret_id = (
+    var.confidential_space_caddy_acme_secret_id != ""
+    ? var.confidential_space_caddy_acme_secret_id
+    : "${local.name_prefix}-caddy-acme"
+  )
   confidential_space_attestation_conditions = compact([
     "assertion.submods.container.image_digest == '${var.confidential_space_image_digest}'",
     "'${google_service_account.mint.email}' in assertion.google_service_accounts",
@@ -337,6 +367,11 @@ locals {
     "tee-env-TLS_EMAIL"                      = var.tls_email
     "tee-env-CADDY_ENABLED"                  = tostring(var.confidential_space_enable_caddy)
   }
+  confidential_space_caddy_metadata = local.caddy_acme_storage_enabled ? {
+    "tee-env-CADDY_STORAGE_SECRET_RESOURCE"       = google_secret_manager_secret.caddy_acme[0].id
+    "tee-env-CADDY_STORAGE_SYNC_INTERVAL_SECONDS" = tostring(var.confidential_space_caddy_acme_sync_interval_seconds)
+    "tee-env-CADDY_STORAGE_MAX_BYTES"             = tostring(var.confidential_space_caddy_acme_max_bytes)
+  } : {}
   confidential_space_managed_postgres_metadata = var.managed_postgres_enabled ? {
     "tee-env-DB_HOST"    = google_sql_database_instance.mint[0].private_ip_address
     "tee-env-DB_PORT"    = "5432"
@@ -346,6 +381,7 @@ locals {
   } : {}
   confidential_space_metadata = merge(
     local.confidential_space_base_metadata,
+    local.confidential_space_caddy_metadata,
     local.confidential_space_managed_postgres_metadata
   )
   labels = {
@@ -711,6 +747,25 @@ data "google_secret_manager_secret" "mint_env" {
   depends_on = [google_project_service.required]
 }
 
+resource "google_secret_manager_secret" "caddy_acme" {
+  count     = local.caddy_acme_storage_enabled ? 1 : 0
+  secret_id = local.caddy_acme_secret_id
+  labels    = local.labels
+
+  replication {
+    auto {
+      customer_managed_encryption {
+        kms_key_name = google_kms_crypto_key.secret_manager.id
+      }
+    }
+  }
+
+  depends_on = [
+    google_kms_crypto_key_iam_member.secret_manager_cmek,
+    google_project_service.required,
+  ]
+}
+
 resource "google_project_service_identity" "secret_manager" {
   provider = google-beta
   project  = var.project_id
@@ -828,6 +883,24 @@ resource "google_secret_manager_secret_iam_member" "confidential_space_mint_env_
   count     = local.use_confidential_space ? 1 : 0
   secret_id = data.google_secret_manager_secret.mint_env.id
   role      = "roles/secretmanager.secretAccessor"
+  member    = local.confidential_space_principal
+
+  depends_on = [google_iam_workload_identity_pool_provider.confidential_space]
+}
+
+resource "google_secret_manager_secret_iam_member" "confidential_space_caddy_acme_accessor" {
+  count     = local.caddy_acme_storage_enabled ? 1 : 0
+  secret_id = google_secret_manager_secret.caddy_acme[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.confidential_space_principal
+
+  depends_on = [google_iam_workload_identity_pool_provider.confidential_space]
+}
+
+resource "google_secret_manager_secret_iam_member" "confidential_space_caddy_acme_version_adder" {
+  count     = local.caddy_acme_storage_enabled ? 1 : 0
+  secret_id = google_secret_manager_secret.caddy_acme[0].id
+  role      = "roles/secretmanager.secretVersionAdder"
   member    = local.confidential_space_principal
 
   depends_on = [google_iam_workload_identity_pool_provider.confidential_space]
@@ -962,6 +1035,8 @@ resource "google_compute_instance" "confidential_space" {
     google_iam_workload_identity_pool_provider.confidential_space,
     google_kms_crypto_key_iam_member.confidential_space_mint_encrypter_decrypter,
     google_secret_manager_secret_iam_member.confidential_space_mint_env_accessor,
+    google_secret_manager_secret_iam_member.confidential_space_caddy_acme_accessor,
+    google_secret_manager_secret_iam_member.confidential_space_caddy_acme_version_adder,
     google_project_iam_member.artifact_registry_reader,
     google_project_iam_member.confidential_space_log_writer,
     google_sql_database.mint,
@@ -1036,4 +1111,9 @@ output "audit_log_archive_bucket" {
 output "audit_alert_policy_name" {
   description = "Cloud Monitoring alert policy for sensitive admin audit activity when audit monitoring is enabled."
   value       = var.audit_monitoring_enabled ? google_monitoring_alert_policy.security_admin_activity[0].name : null
+}
+
+output "caddy_acme_storage_secret_name" {
+  description = "Secret Manager secret used to persist Caddy ACME storage in Confidential Space mode."
+  value       = local.caddy_acme_storage_enabled ? google_secret_manager_secret.caddy_acme[0].id : null
 }

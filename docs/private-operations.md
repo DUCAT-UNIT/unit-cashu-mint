@@ -9,16 +9,16 @@ evidence needed by maintainers to prove what happened during a deployment.
 
 ## Public Versus Private
 
-| Category | Public repo | Private operations archive |
-|---|---|---|
-| Release process | Workflow names, high-level steps, verifier checks | Full run records, operator notes, approval records |
-| Container image | Image digest and non-sensitive attestation summary | Artifact Registry path, provenance records, deploy approval trail |
-| Deployment attestation | Predicate type, verifier scope, public run link when safe | Attestation JSON, markdown summary, checksum, artifact URL |
-| Secrets | Secret names only when needed for setup docs | Secret payload versions, rotation notes, emergency access notes |
-| Key management | KMS purpose, IAM shape, verifier checks | Exact key resource inventory, access review notes |
-| Database | Private Cloud SQL posture and migration process | Instance inventory, backup/restore evidence, incident notes |
-| Audit logs | What log classes are enabled and retained | Audit bucket/object references, alert reviews, access reviews |
-| Admin access | `ADMIN_ENABLED`/`ADMIN_TOKEN` behavior | Token rotation record and who has access |
+| Category               | Public repo                                               | Private operations archive                                        |
+| ---------------------- | --------------------------------------------------------- | ----------------------------------------------------------------- |
+| Release process        | Workflow names, high-level steps, verifier checks         | Full run records, operator notes, approval records                |
+| Container image        | Image digest and non-sensitive attestation summary        | Artifact Registry path, provenance records, deploy approval trail |
+| Deployment attestation | Predicate type, verifier scope, public run link when safe | Attestation JSON, markdown summary, checksum, artifact URL        |
+| Secrets                | Secret names only when needed for setup docs              | Secret payload versions, rotation notes, emergency access notes   |
+| Key management         | KMS purpose, IAM shape, verifier checks                   | Exact key resource inventory, access review notes                 |
+| Database               | Private Cloud SQL posture and migration process           | Instance inventory, backup/restore evidence, incident notes       |
+| Audit logs             | What log classes are enabled and retained                 | Audit bucket/object references, alert reviews, access reviews     |
+| Admin access           | `ADMIN_ENABLED`/`ADMIN_TOKEN` behavior                    | Token rotation record and who has access                          |
 
 Do not commit private archive contents to this repository.
 
@@ -63,6 +63,22 @@ and summarize the current posture. It must not include Secret Manager payloads,
 database URLs, admin bearer tokens, service account keys, or raw audit log
 exports.
 
+## Ongoing Audit Monitor
+
+The scheduled `GCP Confidential Space Audit Monitor` workflow is part of the
+private evidence trail. Maintainers should review failures and record:
+
+- workflow run URL;
+- attestation JSON checksum;
+- audit monitor JSON checksum;
+- unexpected principal, method, and resource;
+- whether the event was approved maintenance or an incident;
+- any remediation commit, IAM rollback, or key/secret rotation.
+
+The monitor does not publish raw audit logs in the public repo. It uploads the
+non-secret JSON and markdown summaries as workflow artifacts for the private
+operations archive.
+
 ## Review Checklist
 
 Before considering a release privately evidenced, verify:
@@ -76,5 +92,5 @@ Before considering a release privately evidenced, verify:
 - the VM service account does not have direct secret or app KMS decrypt access;
 - Cloud SQL remains private-IP only;
 - audit archive and alerting resources are present when required;
+- the scheduled audit monitor is enabled and its latest run is green;
 - no secret values appear in GitHub logs or committed files.
-

@@ -6,13 +6,13 @@ available to the expected, attested container image.
 
 ## Trust Boundaries
 
-| Component | Trusted with mint secrets? | Notes |
-|---|---|---|
-| Operator | No by default | Can deploy and administer infrastructure, but the verifier checks that the VM service account has no direct Secret Manager accessor role and no direct app-KMS decrypt role. |
-| Confidential Space container | Yes | Runs the mint and receives access only after Google Cloud attestation succeeds. |
-| GCP Secret Manager | Yes | Stores the mint runtime secret. Production uses CMEK for the secret. |
-| Cloud KMS | Yes | Encrypts newly written keyset private keys and the Secret Manager CMEK. |
-| Private Cloud SQL | No | Stores mint state. It is private-IP only and CMEK encrypted in the managed GCP path. |
+| Component                    | Trusted with mint secrets? | Notes                                                                                                                                                                        |
+| ---------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operator                     | No by default              | Can deploy and administer infrastructure, but the verifier checks that the VM service account has no direct Secret Manager accessor role and no direct app-KMS decrypt role. |
+| Confidential Space container | Yes                        | Runs the mint and receives access only after Google Cloud attestation succeeds.                                                                                              |
+| GCP Secret Manager           | Yes                        | Stores the mint runtime secret and, in Confidential Space mode, Caddy ACME storage. Production uses CMEK for these secrets.                                                  |
+| Cloud KMS                    | Yes                        | Encrypts newly written keyset private keys and the Secret Manager CMEK.                                                                                                      |
+| Private Cloud SQL            | No                         | Stores mint state. It is private-IP only and CMEK encrypted in the managed GCP path.                                                                                         |
 
 ## How Key Access Is Protected
 
@@ -45,12 +45,21 @@ Workload exchanges attestation token through Workload Identity Federation
 Workload fetches Secret Manager payload and Cloud KMS access token
     |
     v
+Workload restores Caddy ACME storage from an attestation-gated secret
+    |
+    v
 Mint starts Caddy and Node.js inside the attested container
 ```
 
 The secret payload is not written into Terraform state. For managed Postgres,
 Terraform passes non-secret database metadata to the workload and the database
 password remains in Secret Manager.
+
+Caddy ACME account and certificate storage is persisted separately in a
+CMEK-protected Secret Manager secret. The workload restores it before Caddy
+starts and snapshots changed storage back to Secret Manager from inside the
+attested container. CI can see only the secret resource name and IAM policy,
+not the certificate private key material.
 
 ## Updating Without Revealing Keys
 
@@ -92,6 +101,9 @@ The generated deployment predicate records evidence that:
 - the VM service account lacks direct Secret Manager accessor and app-level
   Cloud KMS decrypt access;
 - Secret Manager uses CMEK;
+- Caddy ACME storage is persisted through a CMEK-protected Secret Manager
+  secret whose access and version-add permissions are bound to the attested
+  image digest;
 - managed Cloud SQL is private-IP only and CMEK encrypted;
 - audit log archive and alerting resources exist when required;
 - the live mint endpoints are healthy.
@@ -103,6 +115,12 @@ Cloud Monitoring alert policy for sensitive admin activity. This makes later
 IAM, Workload Identity, Cloud KMS, Secret Manager, VM, and Cloud SQL changes
 observable.
 
+The repository also includes a scheduled `GCP Confidential Space Audit Monitor`
+workflow. It reruns the live deployment verifier and scans recent Cloud Audit
+Logs for sensitive admin changes. The monitor allows the configured deploy
+service account and fails on unexpected principals, which turns the release-time
+attestation into an ongoing tamper-evidence check.
+
 Data Access logs for Cloud KMS and Secret Manager provide stronger evidence of
 later key and secret access, not only policy changes. The dev deployment keeps
 these logs enabled through `audit_data_access_logs_enabled=true`; the release
@@ -112,11 +130,11 @@ The audit archive bucket has retention configured. Retention locking should be
 enabled only after the retention period is approved because Cloud Storage
 retention locks are irreversible for that period.
 
-## Known Gaps
+## Residual Risks
 
-- The deployment attestation proves the state observed at release time. It does
-  not prove that a separate GCP administrator cannot change IAM later unless
-  audit monitoring remains enabled and reviewed.
+- The audit monitor and Cloud Monitoring alert policy make later admin changes
+  observable and fail CI on unexpected principals, but they still require human
+  review of alerts and private evidence for incident response.
 - The release workflow depends on GitHub repository and environment variables
   being configured correctly. The preflight job skips deployment if required
   configuration is missing.

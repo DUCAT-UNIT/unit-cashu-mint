@@ -12,6 +12,9 @@ shutdown() {
   if [[ -n "${CADDY_PID:-}" ]]; then
     kill "$CADDY_PID" 2>/dev/null || true
   fi
+  if [[ -n "${CADDY_STORAGE_PID:-}" ]]; then
+    kill "$CADDY_STORAGE_PID" 2>/dev/null || true
+  fi
 }
 trap shutdown EXIT INT TERM
 
@@ -84,9 +87,29 @@ if [[ "${CADDY_ENABLED:-true}" == "true" ]]; then
   : "${DOMAIN_NAME:?DOMAIN_NAME is required when CADDY_ENABLED=true}"
   : "${TLS_EMAIL:?TLS_EMAIL is required when CADDY_ENABLED=true}"
 
+  if [[ -n "${CADDY_STORAGE_SECRET_RESOURCE:-}" ]]; then
+    log "Restoring Caddy ACME storage from ${CADDY_STORAGE_SECRET_RESOURCE}"
+    if ! node /app/scripts/gcp-confidential-space-caddy-storage.mjs restore \
+      --secret "$CADDY_STORAGE_SECRET_RESOURCE" \
+      --path /data/caddy; then
+      log "Caddy ACME storage restore failed; continuing so Caddy can issue a fresh certificate"
+    fi
+  fi
+
   log "Starting Caddy for ${DOMAIN_NAME}"
   caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
   CADDY_PID=$!
+
+  if [[ -n "${CADDY_STORAGE_SECRET_RESOURCE:-}" ]]; then
+    log "Starting Caddy ACME storage persistence loop"
+    node /app/scripts/gcp-confidential-space-caddy-storage.mjs watch \
+      --secret "$CADDY_STORAGE_SECRET_RESOURCE" \
+      --path /data/caddy \
+      --interval "${CADDY_STORAGE_SYNC_INTERVAL_SECONDS:-60}" \
+      --max-bytes "${CADDY_STORAGE_MAX_BYTES:-60000}" &
+    CADDY_STORAGE_PID=$!
+  fi
+
   wait -n "$APP_PID" "$CADDY_PID"
 else
   wait "$APP_PID"
