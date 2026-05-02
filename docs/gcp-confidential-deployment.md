@@ -7,10 +7,10 @@ This module supports two GCP deployment modes:
   app-level Cloud KMS encryption, and a startup gate that refuses to fetch
   secrets unless the instance reports Confidential VM and Shielded VM controls.
 - `deployment_mode = "confidential-space"` is the production-grade path for
-  Nitro-style attestation-gated release. The mint runs as a single Confidential
-  Space container. Secret Manager access and Cloud KMS encrypt/decrypt are
-  granted to a Workload Identity Federation principal bound to the attested
-  container image digest, not to the VM service account.
+  attestation-gated release. The mint runs as a single Confidential Space
+  container. Secret Manager access and Cloud KMS encrypt/decrypt are granted to
+  a Workload Identity Federation principal bound to the attested container image
+  digest, not to the VM service account.
 
 ## What Terraform Creates
 
@@ -57,7 +57,6 @@ use the new key.
 The `mint.env` file must contain the sensitive and chain-specific values:
 
 ```dotenv
-ENCLAVE_MODE=false
 NETWORK=mainnet
 ESPLORA_URL=https://mempool.space/api
 ORD_URL=https://ord.example.com

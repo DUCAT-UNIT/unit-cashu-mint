@@ -1,8 +1,12 @@
 # Ducat Mint Server
 
-A Cashu ecash mint backed by Bitcoin and Bitcoin Runes, running inside an AWS Nitro Enclave.
+A Cashu ecash mint backed by Bitcoin and Bitcoin Runes, deployed on GCP
+Confidential Space.
 
-**Property the enclave gives you:** the operator of the EC2 instance cannot see plaintext TLS traffic, mint signing keys, or seed material. Updates to the mint code are publicly verifiable via the enclave's PCR0 fingerprint.
+**Property the Confidential Space deployment gives you:** mint secrets and
+Cloud KMS decrypt capability are only available to the pinned, attested
+container image. The VM service account does not have direct access to the
+mint Secret Manager payload or app-level Cloud KMS key.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-22.4+-green?logo=node.js)](https://nodejs.org/)
@@ -10,82 +14,89 @@ A Cashu ecash mint backed by Bitcoin and Bitcoin Runes, running inside an AWS Ni
 
 ---
 
-## What this is
+## What This Is
 
-- **Cashu protocol** — full NUT-00 through NUT-11 (blind signatures, P2PK, multisig, timelocks).
-- **Multi-method / multi-unit** — BTC on-chain (`onchain`/`sat`), UNIT Runes (`onchain`/`unit`), and optional Lightning (`bolt11`/`sat` via LNbits) behind a single mint.
-- **Nitro Enclave deployment** — TLS termination, key derivation, and signing all happen inside the enclave; the parent EC2 host is treated as untrusted.
-- **KMS-sealed secrets** — `MINT_SEED` and `ENCRYPTION_KEY` are sealed by AWS KMS to a specific enclave fingerprint (PCR0). A different image cannot unseal them.
+- **Cashu protocol** - full NUT-00 through NUT-11 plus supported quote
+  signatures and payment-method extensions.
+- **Multi-method / multi-unit** - BTC on-chain (`onchain`/`sat`), UNIT Runes
+  (`onchain`/`unit`), and optional Lightning (`bolt11`/`sat` via LNbits)
+  behind a single mint.
+- **GCP Confidential Space deployment** - the production path runs the mint as
+  an attested container with image-digest-bound Secret Manager and Cloud KMS
+  access.
+- **Cloud KMS keyset encryption** - newly written mint keyset private keys are
+  encrypted through Cloud KMS in GCP modes.
 
-[UNIT](https://docs.ducatprotocol.com/unit/philosophy) is a Bitcoin-backed CDP stablecoin. This mint enables privacy-preserving transfers of UNIT tokens using Cashu blind signatures.
+[UNIT](https://docs.ducatprotocol.com/unit/philosophy) is a Bitcoin-backed CDP
+stablecoin. This mint enables privacy-preserving transfers of UNIT tokens using
+Cashu blind signatures.
 
-## Architecture at a glance
+## Architecture At A Glance
 
-```
+```text
 Internet :443
-    │ (TCP passthrough — parent never decrypts)
-    ▼
-Parent EC2  ──vsock──►  Nitro Enclave
-                            │
-                            ├── nginx :8443  (TLS terminates here)
-                            ├── Node.js :3338 (Fastify mint)
-                            └── KMS Decrypt  (gated on PCR0 attestation)
-                                  │
-                                  └── plaintext keys live in enclave RAM only
+    |
+    v
+GCP Confidential Space VM
+    |
+    |-- Caddy :443              TLS for the mint endpoint
+    |-- Node.js :3338           Fastify Cashu mint
+    |-- Secret Manager fetch    allowed only after attestation
+    |-- Cloud KMS encrypt/decrypt
+    |                           allowed only to the expected image digest
+    |
+    v
+Private Cloud SQL PostgreSQL
 ```
 
-Postgres runs on the parent and is reached via vsock. Sensitive operations are signed inside the enclave; the DB stores ciphertext for keys (AES-256-CBC) and plaintext for spent-proof bookkeeping.
+Terraform binds Secret Manager access and app-level Cloud KMS encrypt/decrypt
+to a Workload Identity Federation principal scoped to the expected Confidential
+Space image digest. The VM runtime service account can launch the workload, but
+it cannot directly read the mint secret or decrypt app key material.
 
-## Where to read next
+## Where To Read Next
 
-- **Reviewing this for security/architecture?**
-  → [`docs/architecture.md`](./docs/architecture.md), then [`docs/security.md`](./docs/security.md).
-- **Running it locally?**
-  → [`CONTRIBUTING.md`](./CONTRIBUTING.md).
-- **Deploying it on AWS?**
-  → [`docs/deployment.md`](./docs/deployment.md) and [`docs/enclave-deployment.md`](./docs/enclave-deployment.md).
-- **Deploying it on GCP?**
-  → [`docs/gcp-confidential-deployment.md`](./docs/gcp-confidential-deployment.md).
-- **The trust-critical files** (read these to verify the security claims yourself):
-  - [`parent/kms-policy.json`](./parent/kms-policy.json) — the KMS condition that gates decrypt on PCR0
-  - [`enclave/nginx.conf`](./enclave/nginx.conf) — TLS terminates inside the enclave
-  - [`.github/workflows/deploy-enclave.yml`](./.github/workflows/deploy-enclave.yml) — how PCR0 is computed and pinned
+- **Security model:** [`docs/security.md`](./docs/security.md)
+- **Architecture:** [`docs/architecture.md`](./docs/architecture.md)
+- **GCP deployment:** [`docs/gcp-confidential-deployment.md`](./docs/gcp-confidential-deployment.md)
+- **Local development:** [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- **Runes integration:** [`docs/runes-integration.md`](./docs/runes-integration.md)
 
-## Quick start (local)
+## Quick Start
 
 ```bash
 git clone <repo> && cd mint-server
 npm install
 cp .env.example .env
-docker-compose up -d        # postgres, regtest bitcoin
-npm run dev                 # mint on :3338
+docker-compose up -d
+npm run dev
 npm test
 ```
 
-Full dev loop and conventions in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+Full dev loop and conventions are in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
-## Live mint
+## Live Dev Mint
 
-- **Endpoint:** https://cashu-mint.ducatprotocol.com
-- **Currently authorized PCR0:** `d064dbadba90a0f4e2fa8a534e8485f0b470f9e5a666bc6355d1b96f1f8dd3fd65baa2cc7418293169742d04791a60a2`
-- **KMS key alias:** `alias/ducat-mint-enclave`
+- **Endpoint:** https://dev-cashu-mint.ducatprotocol.com
+- **GCP project:** `ducat-dev`
+- **Deployment mode:** Confidential Space
 
-PCR0 is published to the GitHub Actions run summary on every deploy and to S3 at `pcr0/<commit-sha>.txt`. Anyone with the source commit + Dockerfile can reproduce the same PCR0.
+The release workflow builds a new container image, deploys that pinned digest
+through Terraform, restarts the Confidential Space VM, verifies live GCP state,
+and signs a deployment security attestation for the same digest.
 
-## Project layout
+## Project Layout
 
+```text
+src/                     mint application (TypeScript, Fastify)
+gcp-confidential-space/  Confidential Space container entrypoint and Caddy config
+terraform/gcp/           GCP Confidential VM and Confidential Space infrastructure
+scripts/                 dev, build, deploy, and attestation helpers
+docs/                    architecture, security, and deployment docs
+tests/                   unit, integration, and compatibility coverage
 ```
-src/         mint application (TypeScript, Fastify)
-enclave/     enclave-side image build (Dockerfile, nginx, entrypoint)
-parent/      parent EC2 scripts, systemd units, KMS policy, vsock proxies
-terraform/   AWS and GCP infra
-scripts/     dev/ops one-offs
-docs/        architecture, security, deployment docs
-examples/    sample configs (nginx, env, tfvars)
-tests/       unit + integration
-```
 
-## Cashu protocol coverage
+## Cashu Protocol Coverage
 
 | NUT | Feature |
 |---|---|
@@ -105,16 +116,22 @@ tests/       unit + integration
 | 23 | BOLT11 Lightning method |
 | 26 | Draft on-chain BTC method |
 
-## Security model (one-paragraph version)
+## Security Model
 
-Three independent guarantees, each from a different party:
+The key security claim is tied to the GCP release path:
 
-1. **AWS Nitro hardware** signs the attestation document — you can't forge PCR0.
-2. **AWS KMS** enforces the policy in [`parent/kms-policy.json`](./parent/kms-policy.json) — even AWS operators can't decrypt without a matching attestation.
-3. **Reproducible build** ties the source commit to the EIF to PCR0 — so "PCR0 = X" is shorthand for "running exactly this code."
+1. GitHub Actions builds a container image and records the digest.
+2. Terraform grants Secret Manager and Cloud KMS access only to a Confidential
+   Space attestation principal for that exact digest.
+3. The verifier checks live GCP state, including the VM, Workload Identity
+   provider condition, Secret Manager IAM, Cloud KMS IAM, private Cloud SQL,
+   and audit monitoring resources.
+4. The workflow signs a deployment attestation predicate for the digest it
+   actually deployed and verified.
 
-Full trust model, rotation flow, and known gaps in [`docs/security.md`](./docs/security.md).
+Full trust model, update flow, audit monitoring, and known gaps are in
+[`docs/security.md`](./docs/security.md).
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT - see [LICENSE](./LICENSE).

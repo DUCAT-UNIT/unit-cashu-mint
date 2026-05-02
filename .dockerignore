@@ -8,5 +8,3 @@ dist
 coverage
 npm-debug.log
 terraform
-parent
-enclave

@@ -297,8 +297,6 @@ async function createSourceArchive(archivePath) {
     '--exclude=terraform/gcp/.terraform',
     '--exclude=terraform/gcp/terraform.tfstate',
     '--exclude=terraform/gcp/terraform.tfstate.backup',
-    '--exclude=parent',
-    '--exclude=enclave',
     '-czf',
     archivePath,
     '.',

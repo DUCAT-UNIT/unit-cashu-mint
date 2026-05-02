@@ -9,11 +9,6 @@ const envSchema = z
     PORT: z.string().default('3000'),
     HOST: z.string().default('0.0.0.0'),
 
-    // Enclave mode flag - enables enclave-specific behavior
-    ENCLAVE_MODE: z
-      .string()
-      .transform((v) => v === 'true')
-      .default('false'),
     ADMIN_ENABLED: z
       .string()
       .transform((v) => v === 'true')
