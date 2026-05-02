@@ -73,8 +73,8 @@ describe('App Factory', () => {
     const { createServer } = await import('../../src/app.js')
     server = await createServer()
 
-    // When CORS_ORIGINS is not configured, CORS is disabled (origin: false).
-    // Verify the server still handles OPTIONS requests gracefully.
+    // Browser wallets need to discover public mint endpoints from their own
+    // origins, so the default must answer CORS preflights.
     const response = await server.inject({
       method: 'OPTIONS',
       url: '/health',
@@ -84,8 +84,9 @@ describe('App Factory', () => {
       },
     })
 
-    // Server responds without error (CORS plugin is registered even if disabled)
-    expect(response.statusCode).toBeLessThan(500)
+    expect(response.statusCode).toBe(204)
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:3000')
+    expect(response.headers['access-control-allow-methods']).toBeDefined()
   })
 
   it('should have error handler', async () => {

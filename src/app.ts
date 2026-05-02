@@ -37,9 +37,11 @@ export async function createServer() {
   const container = initializeContainer()
   server.decorate('diContainer', container)
 
+  const corsOrigin = env.CORS_ORIGINS_ARRAY?.includes('*') ? true : (env.CORS_ORIGINS_ARRAY ?? true)
+
   // Register plugins
   await server.register(cors, {
-    origin: env.CORS_ORIGINS_ARRAY || false, // Use env variable or block all origins
+    origin: corsOrigin,
     credentials: true,
   })
 
