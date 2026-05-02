@@ -10,12 +10,37 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const args = parseArgs(process.argv.slice(2))
 const tfvars = await readTfvars(args.tfvars ?? join(repoRoot, 'terraform/gcp/terraform.tfvars'))
 
-const projectId = args.project ?? process.env.GCP_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT ?? tfvars.project_id
-const location = args.location ?? process.env.GCP_LOCATION ?? tfvars.artifact_registry_location ?? tfvars.region ?? 'us-central1'
-const repository = args.repository ?? process.env.ARTIFACT_REGISTRY_REPOSITORY ?? tfvars.artifact_registry_repository_id ?? 'ducat-mint'
-const imageName = args.image ?? process.env.ARTIFACT_REGISTRY_IMAGE ?? tfvars.artifact_registry_image_name ?? 'mint-server'
-const tag = args.tag ?? process.env.IMAGE_TAG ?? (await git(['rev-parse', '--short', 'HEAD'])).trim()
-const bucket = args.bucket ?? process.env.CLOUD_BUILD_SOURCE_BUCKET ?? `${projectId}-ducat-mint-cloudbuild-source`
+const projectId = firstNonEmpty(
+  args.project,
+  process.env.GCP_PROJECT_ID,
+  process.env.GOOGLE_CLOUD_PROJECT,
+  tfvars.project_id
+)
+const location = firstNonEmpty(
+  args.location,
+  process.env.GCP_LOCATION,
+  tfvars.artifact_registry_location,
+  tfvars.region,
+  'us-central1'
+)
+const repository = firstNonEmpty(
+  args.repository,
+  process.env.ARTIFACT_REGISTRY_REPOSITORY,
+  tfvars.artifact_registry_repository_id,
+  'ducat-mint'
+)
+const imageName = firstNonEmpty(
+  args.image,
+  process.env.ARTIFACT_REGISTRY_IMAGE,
+  tfvars.artifact_registry_image_name,
+  'mint-server'
+)
+const tag = firstNonEmpty(args.tag, process.env.IMAGE_TAG, (await git(['rev-parse', '--short', 'HEAD'])).trim())
+const bucket = firstNonEmpty(
+  args.bucket,
+  process.env.CLOUD_BUILD_SOURCE_BUCKET,
+  `${projectId}-ducat-mint-cloudbuild-source`
+)
 
 if (!projectId) {
   throw new Error('GCP project is required. Pass --project or set project_id in terraform/gcp/terraform.tfvars.')
@@ -96,6 +121,10 @@ function parseArgs(argv) {
   }
 
   return parsed
+}
+
+function firstNonEmpty(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '')
 }
 
 async function readTfvars(path) {
