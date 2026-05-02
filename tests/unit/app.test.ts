@@ -89,6 +89,23 @@ describe('App Factory', () => {
     expect(response.headers['access-control-allow-methods']).toBeDefined()
   })
 
+  it('should redirect duplicated info endpoint mint URLs', async () => {
+    const { createServer } = await import('../../src/app.js')
+    server = await createServer()
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/v1/info/v1/info?x=1',
+      headers: {
+        origin: 'https://wallet.cashu.me',
+      },
+    })
+
+    expect(response.statusCode).toBe(308)
+    expect(response.headers.location).toBe('/v1/info?x=1')
+    expect(response.headers['access-control-allow-origin']).toBe('https://wallet.cashu.me')
+  })
+
   it('should have error handler', async () => {
     const { createServer } = await import('../../src/app.js')
     server = await createServer()

@@ -99,6 +99,13 @@ export async function createServer() {
   await server.register(wsRoutes)
   await server.register(dashboardRoutes)
 
+  // Some wallets append API paths to the pasted mint URL. If a user pastes
+  // /v1/info instead of the mint base URL, keep the request on the real API.
+  server.all('/v1/info/v1/*', async (request, reply) => {
+    const target = request.url.replace(/^\/v1\/info(?=\/v1(?:\/|$))/, '')
+    return reply.redirect(target, 308)
+  })
+
   // Health check
   server.get('/health', async () => {
     return {
