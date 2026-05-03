@@ -82,6 +82,10 @@ describe('MintService', () => {
       updateMintQuoteState: vi.fn(),
       updateMintQuotePayment: vi.fn(),
       claimMintDeposit: vi.fn().mockResolvedValue(true),
+      withMintQuoteLock: vi.fn(async (id, callback) =>
+        callback(await mockQuoteRepo.findMintQuoteByIdOrThrow(id), undefined as any)
+      ),
+      markMintQuoteIssued: vi.fn(),
       incrementMintQuoteIssued: vi.fn(),
     } as unknown as QuoteRepository
 
@@ -95,12 +99,7 @@ describe('MintService', () => {
       getActiveKeysetsByUnit: vi.fn().mockResolvedValue([{ id: 'keyset123' }]),
     } as unknown as KeyManager
 
-    mintService = new MintService(
-      mockMintCrypto,
-      mockQuoteRepo,
-      backendRegistry,
-      mockKeyManager
-    )
+    mintService = new MintService(mockMintCrypto, mockQuoteRepo, backendRegistry, mockKeyManager)
   })
 
   describe('createOnchainMintQuote', () => {
@@ -108,25 +107,20 @@ describe('MintService', () => {
       const onchainBackend = createMockBackend('unit', 'onchain')
       const registry = new BackendRegistry()
       registry.register(onchainBackend, [], ['unit'])
-      const service = new MintService(
-        mockMintCrypto,
-        mockQuoteRepo,
-        registry,
-        mockKeyManager
-      )
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
       const pubkey = '02' + '11'.repeat(32)
 
-      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(async (quote) => ({
-        ...quote,
-        created_at: Date.now(),
-      } as any))
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(
+        async (quote) =>
+          ({
+            ...quote,
+            created_at: Date.now(),
+          }) as any
+      )
 
       const result = await service.createOnchainMintQuote('unit', pubkey)
 
-      expect(onchainBackend.createDepositAddress).toHaveBeenCalledWith(
-        expect.any(String),
-        0n
-      )
+      expect(onchainBackend.createDepositAddress).toHaveBeenCalledWith(expect.any(String), 0n)
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: 0,
@@ -153,17 +147,15 @@ describe('MintService', () => {
       const onchainBackend = createMockBackend('unit', 'onchain')
       const registry = new BackendRegistry()
       registry.register(onchainBackend, [], ['unit'])
-      const service = new MintService(
-        mockMintCrypto,
-        mockQuoteRepo,
-        registry,
-        mockKeyManager
-      )
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
 
-      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(async (quote) => ({
-        ...quote,
-        created_at: Date.now(),
-      } as any))
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(
+        async (quote) =>
+          ({
+            ...quote,
+            created_at: Date.now(),
+          }) as any
+      )
 
       await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3')
 
@@ -182,26 +174,18 @@ describe('MintService', () => {
       const lightningBackend = createMockBackend('sat', 'bolt11')
       const registry = new BackendRegistry()
       registry.register(lightningBackend)
-      const service = new MintService(
-        mockMintCrypto,
-        mockQuoteRepo,
-        registry,
-        mockKeyManager
-      )
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
 
-      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(async (quote) => ({
-        ...quote,
-        created_at: Date.now(),
-      } as any))
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(
+        async (quote) =>
+          ({
+            ...quote,
+            created_at: Date.now(),
+          }) as any
+      )
 
       const pubkey = '02' + '33'.repeat(32)
-      const result = await service.createMintQuote(
-        128,
-        'sat',
-        'btc:0',
-        'bolt11',
-        pubkey
-      )
+      const result = await service.createMintQuote(128, 'sat', 'btc:0', 'bolt11', pubkey)
 
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -222,24 +206,21 @@ describe('MintService', () => {
       const lightningBackend = createMockBackend('sat', 'bolt11')
       const registry = new BackendRegistry()
       registry.register(lightningBackend)
-      const service = new MintService(
-        mockMintCrypto,
-        mockQuoteRepo,
-        registry,
-        mockKeyManager
-      )
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
 
       const privkey = '11'.repeat(32)
       const pubkey = Buffer.from(getPublicKey(Buffer.from(privkey, 'hex'), true)).toString('hex')
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: 500,
-        unit: 'sat',
-        rune_id: 'btc:0',
-        method: 'bolt11',
-        state: 'PAID',
-        pubkey,
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: 500,
+          unit: 'sat',
+          rune_id: 'btc:0',
+          method: 'bolt11',
+          state: 'PAID',
+          pubkey,
+        })
+      )
       vi.mocked(lightningBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
         txid: 'bolt11-payment',
@@ -251,8 +232,9 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(service.mintTokens(quoteId, outputs))
-        .rejects.toThrow('Mint quote requires a valid signature')
+      await expect(service.mintTokens(quoteId, outputs)).rejects.toThrow(
+        'Mint quote requires a valid signature'
+      )
 
       const signature = signMintQuote(privkey, quoteId, outputs)
       const result = await service.mintTokens(quoteId, outputs, signature)
@@ -265,36 +247,36 @@ describe('MintService', () => {
       const onchainBackend = createMockBackend('unit', 'onchain')
       const registry = new BackendRegistry()
       registry.register(onchainBackend, [], ['unit'])
-      const service = new MintService(
-        mockMintCrypto,
-        mockQuoteRepo,
-        registry,
-        mockKeyManager
-      )
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: 0,
-        method: 'onchain',
-        state: 'PAID',
-        pubkey: '02' + '55'.repeat(32),
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: 0,
+          method: 'onchain',
+          state: 'PAID',
+          pubkey: '02' + '55'.repeat(32),
+        })
+      )
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(service.mintTokens(quoteId, outputs))
-        .rejects.toThrow('Mint quote requires a valid signature')
+      await expect(service.mintTokens(quoteId, outputs)).rejects.toThrow(
+        'Mint quote requires a valid signature'
+      )
       expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
     })
 
     it('should mint tokens when deposit amount matches quote amount', async () => {
       const quoteAmount = 500 // smallest units
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: quoteAmount,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: quoteAmount,
+          state: 'PAID',
+        })
+      )
 
       // Deposit matches quote amount exactly
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -322,15 +304,17 @@ describe('MintService', () => {
         vout: 0,
         creditMode: 'set-paid',
       })
-      expect(mockQuoteRepo.updateMintQuoteState).toHaveBeenCalledWith(quoteId, 'ISSUED')
+      expect(mockQuoteRepo.markMintQuoteIssued).toHaveBeenCalled()
     })
 
     it('should REJECT when a deposit was already claimed by another quote', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: 500,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: 500,
+          state: 'PAID',
+        })
+      )
       vi.mocked(mockQuoteRepo.claimMintDeposit).mockResolvedValue(false)
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -342,19 +326,22 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow('Deposit already claimed by another quote')
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(
+        'Deposit already claimed by another quote'
+      )
       expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
     })
 
     it('should REJECT when deposit amount is GREATER than quote amount', async () => {
       const quoteAmount = 500
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: quoteAmount,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: quoteAmount,
+          state: 'PAID',
+        })
+      )
 
       // THE ACTUAL BUG SCENARIO: User sent 2000 but quote was for 500
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -367,8 +354,7 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow(AmountMismatchError)
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(AmountMismatchError)
 
       // Should NOT issue tokens
       expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
@@ -378,11 +364,13 @@ describe('MintService', () => {
     it('should REJECT when deposit amount is LESS than quote amount', async () => {
       const quoteAmount = 500
 
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: quoteAmount,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: quoteAmount,
+          state: 'PAID',
+        })
+      )
 
       // Underpayment
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -395,15 +383,16 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow(AmountMismatchError)
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(AmountMismatchError)
     })
 
     it('should REJECT when deposit not found on-chain', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          state: 'PAID',
+        })
+      )
 
       // Deposit confirmed but amount undefined means not actually found
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -414,15 +403,18 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow('Deposit not found on-chain')
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(
+        'Deposit not found on-chain'
+      )
     })
 
     it('should REJECT when deposit has insufficient confirmations', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        state: 'UNPAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          state: 'UNPAID',
+        })
+      )
 
       // Unconfirmed deposit
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -435,15 +427,16 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow(/confirmations/)
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(/confirmations/)
     })
 
     it('should REJECT when output amounts do not sum to quote amount', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          state: 'PAID',
+        })
+      )
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -459,16 +452,17 @@ describe('MintService', () => {
         { id: 'keyset123', amount: 100, B_: '02abc' },
       ]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow(AmountMismatchError)
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(AmountMismatchError)
     })
 
     it('should REJECT when output keysets do not match the quote unit', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        amount: 500,
-        state: 'PAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: 500,
+          state: 'PAID',
+        })
+      )
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -480,16 +474,19 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'other-unit-keyset', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow('Output keyset does not match quote unit')
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(
+        'Output keyset does not match quote unit'
+      )
       expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
     })
 
     it('should REJECT already issued quote', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        state: 'ISSUED', // Already issued!
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          state: 'ISSUED', // Already issued!
+        })
+      )
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -501,8 +498,7 @@ describe('MintService', () => {
 
       const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
 
-      await expect(mintService.mintTokens(quoteId, outputs))
-        .rejects.toThrow('already issued')
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow('already issued')
     })
   })
 
@@ -510,10 +506,12 @@ describe('MintService', () => {
     const quoteId = 'test-quote-123'
 
     it('should keep quote UNPAID when deposit amount mismatches', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        state: 'UNPAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          state: 'UNPAID',
+        })
+      )
 
       // Deposit confirmed but wrong amount
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
@@ -524,7 +522,7 @@ describe('MintService', () => {
         confirmations: 6,
       })
 
-      const result = await mintService.getMintQuote(quoteId) as MintQuoteResponse
+      const result = (await mintService.getMintQuote(quoteId)) as MintQuoteResponse
 
       // Quote should remain UNPAID
       expect(result.state).toBe('UNPAID')
@@ -532,10 +530,12 @@ describe('MintService', () => {
     })
 
     it('should mark quote PAID when deposit amount matches', async () => {
-      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(createMintQuote({
-        id: quoteId,
-        state: 'UNPAID',
-      }))
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          state: 'UNPAID',
+        })
+      )
 
       vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
         confirmed: true,
@@ -545,7 +545,7 @@ describe('MintService', () => {
         confirmations: 6,
       })
 
-      const result = await mintService.getMintQuote(quoteId) as MintQuoteResponse
+      const result = (await mintService.getMintQuote(quoteId)) as MintQuoteResponse
 
       expect(result.state).toBe('PAID')
       expect(mockQuoteRepo.claimMintDeposit).toHaveBeenCalledWith({

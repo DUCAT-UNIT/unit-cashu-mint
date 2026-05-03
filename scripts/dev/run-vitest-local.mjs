@@ -16,7 +16,7 @@ if (!existsSync(vitestEntry)) {
 const selectedNode = selectNode()
 if (selectedNode !== process.execPath) {
   console.error(
-    `Using ${selectedNode} for Vitest because the current Node.js runtime cannot load Rollup native bindings.`
+    `Using ${selectedNode} for Vitest because the current Node.js runtime cannot load Vitest native bindings.`
   )
 }
 
@@ -37,7 +37,7 @@ function selectNode() {
   const failures = []
 
   for (const candidate of candidates) {
-    const check = spawnSync(candidate, ['-e', "require('rollup')"], {
+    const check = spawnSync(candidate, [vitestEntry, 'list', '--config', 'vitest.config.ts'], {
       cwd: repoRoot,
       encoding: 'utf8',
       env: process.env,
@@ -55,11 +55,11 @@ function selectNode() {
     return supported
   }
   if (working[0]) {
-    console.error(`No Rollup-compatible Node.js >=22 was found; falling back to ${working[0]}.`)
+    console.error(`No Vitest-compatible Node.js >=22 was found; falling back to ${working[0]}.`)
     return working[0]
   }
 
-  throw new Error(`No Node.js runtime could load Rollup native bindings.\n${failures.join('\n')}`)
+  throw new Error(`No Node.js runtime could load Vitest native bindings.\n${failures.join('\n')}`)
 }
 
 function candidateNodes() {

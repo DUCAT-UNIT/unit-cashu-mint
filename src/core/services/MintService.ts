@@ -357,59 +357,58 @@ export class MintService {
       )
     }
 
-    // 4. Check if already issued
-    if (quote.state === 'ISSUED') {
-      throw new Error('Quote already issued - tokens already minted')
-    }
+    return this.quoteRepo.withMintQuoteLock(quoteId, async (lockedQuote, client) => {
+      if (lockedQuote.state === 'ISSUED') {
+        throw new Error('Quote already issued - tokens already minted')
+      }
 
-    // 5. Verify output amounts sum to quote amount
-    const totalOutput = outputs.reduce((sum, o) => sum + o.amount, 0)
-    if (totalOutput !== quote.amount) {
-      throw new AmountMismatchError(quote.amount, totalOutput)
-    }
+      const totalOutput = outputs.reduce((sum, o) => sum + o.amount, 0)
+      if (totalOutput !== lockedQuote.amount) {
+        throw new AmountMismatchError(lockedQuote.amount, totalOutput)
+      }
 
-    await this.ensureOutputsUseUnit(outputs, quote.unit)
+      await this.ensureOutputsUseUnit(outputs, lockedQuote.unit)
 
-    // 6. Sign blinded messages ONLY after deposit confirmed
-    const signatures = await this.mintCrypto.signBlindedMessages(outputs)
-    await this.signatureRepo?.saveMany(outputs, signatures)
+      const signatures = await this.mintCrypto.signBlindedMessages(outputs)
+      await this.signatureRepo?.saveMany(outputs, signatures, client)
+      await this.quoteRepo.markMintQuoteIssued(quoteId, client)
 
-    // 7. Mark quote as issued
-    await this.quoteRepo.updateMintQuoteState(quoteId, 'ISSUED')
+      logger.info({ quoteId, signatureCount: signatures.length }, 'Tokens minted successfully')
 
-    logger.info({ quoteId, signatureCount: signatures.length }, 'Tokens minted successfully')
-
-    return { signatures }
+      return { signatures }
+    })
   }
 
   private async mintOnchainTokens(
     quoteId: string,
     outputs: BlindedMessage[]
   ): Promise<{ signatures: BlindSignature[] }> {
-    const quote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
-    const quoteState = await this.getOnchainMintQuote(quoteId)
-    const availableAmount = quoteState.amount_paid - quoteState.amount_issued
+    await this.getOnchainMintQuote(quoteId)
     const totalOutput = outputs.reduce((sum, o) => sum + o.amount, 0)
 
     if (totalOutput <= 0) {
       throw new AmountMismatchError(1, totalOutput)
     }
 
-    if (totalOutput > availableAmount) {
-      throw new AmountMismatchError(availableAmount, totalOutput)
-    }
+    return this.quoteRepo.withMintQuoteLock(quoteId, async (quote, client) => {
+      const availableAmount = quote.amount_paid - quote.amount_issued
 
-    await this.ensureOutputsUseUnit(outputs, quote.unit)
-    const signatures = await this.mintCrypto.signBlindedMessages(outputs)
-    await this.signatureRepo?.saveMany(outputs, signatures)
-    await this.quoteRepo.incrementMintQuoteIssued(quoteId, totalOutput)
+      if (totalOutput > availableAmount) {
+        throw new AmountMismatchError(availableAmount, totalOutput)
+      }
 
-    logger.info(
-      { quoteId, totalOutput, signatureCount: signatures.length },
-      'Onchain tokens minted'
-    )
+      await this.ensureOutputsUseUnit(outputs, quote.unit)
+      const signatures = await this.mintCrypto.signBlindedMessages(outputs)
+      await this.signatureRepo?.saveMany(outputs, signatures, client)
+      await this.quoteRepo.incrementMintQuoteIssued(quoteId, totalOutput, client)
 
-    return { signatures }
+      logger.info(
+        { quoteId, totalOutput, signatureCount: signatures.length },
+        'Onchain tokens minted'
+      )
+
+      return { signatures }
+    })
   }
 
   private async getOnchainMintQuote(quoteId: string): Promise<OnchainMintQuoteResponse> {
@@ -420,7 +419,11 @@ export class MintService {
       const depositStatus = await backend.checkDeposit(quoteId, quote.request, true)
       if (depositStatus.confirmed && depositStatus.amount !== undefined) {
         if (depositStatus.txid && depositStatus.vout !== undefined) {
-          const claimed = await this.claimDepositForQuote(quote, depositStatus, depositStatus.amount)
+          const claimed = await this.claimDepositForQuote(
+            quote,
+            depositStatus,
+            depositStatus.amount
+          )
           if (claimed) {
             const updatedQuote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
             quote.amount_paid = updatedQuote.amount_paid

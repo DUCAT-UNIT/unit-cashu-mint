@@ -10,10 +10,11 @@ import {
   MeltQuoteResponse,
   OnchainMeltQuoteResponse,
 } from '../../types/cashu.js'
-import { AmountMismatchError, MintError } from '../../utils/errors.js'
+import { AmountMismatchError, hasErrorCode, MintError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
+import { WithdrawalResult } from '../payment/types.js'
 import { notificationBus } from '../events/notifications.js'
 import { SignatureRepository } from '../../database/repositories/SignatureRepository.js'
 
@@ -258,12 +259,27 @@ export class MeltService {
     // 5. Hash secrets to Y values for database lookup
     const Y_values = inputs.map((proof) => this.mintCrypto.hashSecret(proof.secret))
 
-    // 6. Mark proofs as spent FIRST (to prevent double-spending)
     const transactionId = `melt_${quoteId}`
-    await this.proofRepo.markSpent(inputs, Y_values, transactionId)
 
-    // 7. Update quote to PENDING
-    await this.quoteRepo.updateMeltQuoteState(quoteId, 'PENDING')
+    try {
+      await this.quoteRepo.claimMeltQuotePending(quoteId)
+    } catch (error) {
+      if (hasErrorCode(error, '23505')) {
+        throw new MintError('Request already paid', 20006, 'Request already paid')
+      }
+
+      throw error
+    }
+
+    // 6. Mark proofs as spent after the quote has been claimed. If another
+    // request claimed this quote first, it will already be PENDING/PAID above.
+    try {
+      await this.proofRepo.markSpent(inputs, Y_values, transactionId)
+    } catch (error) {
+      await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
+      throw error
+    }
+
     if (quote.method === 'bolt11') {
       notificationBus.publish('bolt11_melt_quote', {
         quote: quote.id,
@@ -282,81 +298,13 @@ export class MeltService {
       'Proofs locked, initiating Runes withdrawal'
     )
 
-    // 8. Initiate withdrawal using the appropriate backend
+    const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
+    let result: WithdrawalResult
     try {
-      const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
-      const result = await backend.withdraw(
+      result = await backend.withdraw(
         quote.request, // destination
         BigInt(quote.amount)
       )
-
-      const nextState = quote.method === 'onchain' ? 'PENDING' : 'PAID'
-      const outpoint = quote.method === 'onchain' ? `${result.txid}:0` : undefined
-      const spentAmount =
-        quote.method === 'bolt11' ? quote.amount + result.fee_paid + inputFees : reservedAmount
-      const changeAmount = inputAmount - spentAmount
-      const change = await this.signChangeOutputs(outputs, changeAmount)
-
-      await this.quoteRepo.updateMeltQuoteState(
-        quoteId,
-        nextState,
-        result.txid,
-        result.fee_paid,
-        outpoint,
-        change
-      )
-      if (quote.method === 'bolt11') {
-        notificationBus.publish('bolt11_melt_quote', {
-          quote: quote.id,
-          amount: quote.amount,
-          fee_reserve: quote.fee_reserve,
-          state: nextState,
-          expiry: quote.expiry,
-          request: quote.request,
-          unit: quote.unit,
-          payment_preimage: result.txid,
-        })
-      }
-
-      logger.info(
-        { quoteId, txid: result.txid, feePaid: result.fee_paid, unit: quote.unit },
-        'Withdrawal completed - proofs permanently burned'
-      )
-
-      if (quote.method === 'onchain') {
-        return {
-          quote: quote.id,
-          request: quote.request,
-          amount: quote.amount,
-          unit: quote.unit,
-          fee: this.quoteFeeChargedToWallet(quote),
-          estimated_blocks: quote.estimated_blocks ?? 1,
-          state: 'PENDING',
-          expiry: quote.expiry,
-          outpoint,
-        }
-      }
-
-      if (quote.method === 'bolt11') {
-        return {
-          quote: quote.id,
-          amount: quote.amount,
-          fee_reserve: quote.fee_reserve,
-          state: 'PAID',
-          expiry: quote.expiry,
-          request: quote.request,
-          unit: quote.unit,
-          payment_preimage: result.txid,
-          change,
-        }
-      }
-
-      return {
-        state: 'PAID',
-        paid: true, // NUT-05: paid field indicates successful payment
-        payment_preimage: result.txid, // Transaction ID as payment proof
-        change,
-      }
     } catch (error) {
       logger.error(
         {
@@ -374,10 +322,7 @@ export class MeltService {
         'Withdrawal failed - reverting proofs to unspent'
       )
 
-      // Revert proofs to unspent by deleting them from database
       const deletedCount = await this.proofRepo.deleteByTransactionId(transactionId)
-
-      // Revert quote to UNPAID so user can retry
       await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
 
       logger.info(
@@ -386,6 +331,74 @@ export class MeltService {
       )
 
       throw new Error('Withdrawal failed - your ecash tokens remain valid, please try again')
+    }
+
+    const nextState = quote.method === 'onchain' ? 'PENDING' : 'PAID'
+    const outpoint = quote.method === 'onchain' ? `${result.txid}:0` : undefined
+    const spentAmount =
+      quote.method === 'bolt11' ? quote.amount + result.fee_paid + inputFees : reservedAmount
+    const changeAmount = inputAmount - spentAmount
+    const change = await this.signChangeOutputs(outputs, changeAmount)
+
+    await this.quoteRepo.updateMeltQuoteState(
+      quoteId,
+      nextState,
+      result.txid,
+      result.fee_paid,
+      outpoint,
+      change
+    )
+    if (quote.method === 'bolt11') {
+      notificationBus.publish('bolt11_melt_quote', {
+        quote: quote.id,
+        amount: quote.amount,
+        fee_reserve: quote.fee_reserve,
+        state: nextState,
+        expiry: quote.expiry,
+        request: quote.request,
+        unit: quote.unit,
+        payment_preimage: result.txid,
+      })
+    }
+
+    logger.info(
+      { quoteId, txid: result.txid, feePaid: result.fee_paid, unit: quote.unit },
+      'Withdrawal completed - proofs permanently burned'
+    )
+
+    if (quote.method === 'onchain') {
+      return {
+        quote: quote.id,
+        request: quote.request,
+        amount: quote.amount,
+        unit: quote.unit,
+        fee: this.quoteFeeChargedToWallet(quote),
+        estimated_blocks: quote.estimated_blocks ?? 1,
+        state: 'PENDING',
+        expiry: quote.expiry,
+        outpoint,
+      }
+    }
+
+    if (quote.method === 'bolt11') {
+      return {
+        quote: quote.id,
+        amount: quote.amount,
+        fee_reserve: quote.fee_reserve,
+        state: 'PAID',
+        expiry: quote.expiry,
+        request: quote.request,
+        unit: quote.unit,
+        payment_preimage: result.txid,
+        change,
+      }
+    }
+
+    return {
+      state: 'PAID',
+      paid: true, // NUT-05: paid field indicates successful payment
+      payment_preimage: result.txid, // Transaction ID as payment proof
+      change,
     }
   }
 

@@ -1,13 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { testConnection } from '../../src/database/db.js'
+import { describe, it, expect, afterAll } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 
 describe('App Factory', () => {
   let server: FastifyInstance
-
-  beforeAll(async () => {
-    await testConnection()
-  })
 
   afterAll(async () => {
     if (server) {

@@ -4,12 +4,14 @@ import { BTCConfig } from '../../../src/btc/types.js'
 
 // Mock the EsploraClient
 vi.mock('../../../src/runes/api-client.js', () => ({
-  EsploraClient: vi.fn().mockImplementation(() => ({
-    getAddressUtxos: vi.fn(),
-    getBlockHeight: vi.fn(),
-    getTransaction: vi.fn(),
-    broadcastTransaction: vi.fn(),
-  })),
+  EsploraClient: vi.fn().mockImplementation(function () {
+    return {
+      getAddressUtxos: vi.fn(),
+      getBlockHeight: vi.fn(),
+      getTransaction: vi.fn(),
+      broadcastTransaction: vi.fn(),
+    }
+  }),
 }))
 
 // Mock the logger
@@ -51,9 +53,14 @@ describe('BTCBackend', () => {
   })
 
   describe('createDepositAddress', () => {
-    it('should return the mint address', async () => {
+    it('should return a deterministic quote-specific deposit address', async () => {
       const address = await backend.createDepositAddress('quote123', 1000n)
-      expect(address).toBe(mockConfig.mintAddress)
+      const repeatedAddress = await backend.createDepositAddress('quote123', 1000n)
+      const otherAddress = await backend.createDepositAddress('quote456', 1000n)
+
+      expect(address).toMatch(/^tb1q/)
+      expect(repeatedAddress).toBe(address)
+      expect(otherAddress).not.toBe(address)
     })
   })
 

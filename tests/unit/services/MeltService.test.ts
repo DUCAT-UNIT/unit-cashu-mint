@@ -95,6 +95,7 @@ describe('MeltService', () => {
         estimated_blocks: 1,
       }),
       updateMeltQuoteState: vi.fn(),
+      claimMeltQuotePending: vi.fn().mockResolvedValue({}),
     } as unknown as QuoteRepository
     const proofRepo = {
       markSpent: vi.fn(),
@@ -150,6 +151,7 @@ describe('MeltService', () => {
       }),
       findSettledMeltQuoteByRequest: vi.fn().mockResolvedValue(null),
       updateMeltQuoteState: vi.fn(),
+      claimMeltQuotePending: vi.fn().mockResolvedValue({}),
     } as unknown as QuoteRepository
     const proofRepo = {
       markSpent: vi.fn(),
@@ -211,6 +213,7 @@ describe('MeltService', () => {
       }),
       findSettledMeltQuoteByRequest: vi.fn().mockResolvedValue(null),
       updateMeltQuoteState: vi.fn(),
+      claimMeltQuotePending: vi.fn().mockResolvedValue({}),
     } as unknown as QuoteRepository
     const proofRepo = {
       markSpent: vi.fn(),
@@ -268,6 +271,7 @@ describe('MeltService', () => {
       }),
       findSettledMeltQuoteByRequest: vi.fn().mockResolvedValue(null),
       updateMeltQuoteState: vi.fn(),
+      claimMeltQuotePending: vi.fn().mockResolvedValue({}),
     } as unknown as QuoteRepository
     const proofRepo = {
       markSpent: vi.fn(),
@@ -348,6 +352,7 @@ describe('MeltService', () => {
         created_at: Date.now(),
       }),
       updateMeltQuoteState: vi.fn(),
+      claimMeltQuotePending: vi.fn().mockResolvedValue({}),
     } as unknown as QuoteRepository
     const proofRepo = {
       markSpent: vi.fn(),

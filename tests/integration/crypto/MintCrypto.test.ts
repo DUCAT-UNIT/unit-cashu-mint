@@ -96,11 +96,7 @@ describe('MintCrypto', () => {
     })
 
     it('should hash multiple secrets', () => {
-      const secrets = [
-        'secret_1',
-        'secret_2',
-        'secret_3',
-      ]
+      const secrets = ['secret_1', 'secret_2', 'secret_3']
 
       const hashes = mintCrypto.hashSecrets(secrets)
 
@@ -142,10 +138,7 @@ describe('MintCrypto', () => {
       const unitKeyset = await keyManager.generateKeyset('1527352:1', 'unit')
 
       await expect(
-        mintCrypto.ensureProofsAndOutputsUseSingleUnit(
-          [{ id: keysetId }],
-          [{ id: unitKeyset.id }]
-        )
+        mintCrypto.ensureProofsAndOutputsUseSingleUnit([{ id: keysetId }], [{ id: unitKeyset.id }])
       ).rejects.toMatchObject({
         code: 13002,
         message: 'Keyset unit mismatch',

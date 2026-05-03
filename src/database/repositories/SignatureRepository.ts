@@ -1,8 +1,13 @@
+import type pg from 'pg'
 import { query } from '../db.js'
 import { BlindedMessage, BlindSignature } from '../../types/cashu.js'
 
 export class SignatureRepository {
-  async saveMany(outputs: BlindedMessage[], signatures: BlindSignature[]): Promise<void> {
+  async saveMany(
+    outputs: BlindedMessage[],
+    signatures: BlindSignature[],
+    client?: pg.PoolClient
+  ): Promise<void> {
     for (let i = 0; i < outputs.length; i++) {
       const output = outputs[i]
       const signature = signatures[i]
@@ -10,7 +15,10 @@ export class SignatureRepository {
         continue
       }
 
-      await query(
+      const runQuery: (text: string, params?: unknown[]) => Promise<pg.QueryResult> = client
+        ? client.query.bind(client)
+        : query
+      await runQuery(
         `
         INSERT INTO issued_signatures (B_, keyset_id, amount, C_, dleq, created_at)
         VALUES ($1, $2, $3, $4, $5, $6)

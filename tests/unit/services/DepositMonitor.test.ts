@@ -24,6 +24,7 @@ vi.mock('../../../src/utils/logger.js', () => ({
 // Mock backend for testing
 function createMockBackend(unit: string): IPaymentBackend {
   return {
+    method: 'unit',
     unit,
     createDepositAddress: vi.fn(),
     checkDeposit: vi.fn().mockResolvedValue({ confirmed: false, confirmations: 0 }),
@@ -157,6 +158,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1ptest456',
         state: 'UNPAID' as MintQuoteState,
         expiry: Math.floor(now / 1000) + 600,
@@ -198,6 +200,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1pexpired',
         state: 'UNPAID' as MintQuoteState,
         expiry: nowSec - 10, // Already expired (10 seconds ago)
@@ -209,16 +212,14 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1pvalid',
         state: 'UNPAID' as MintQuoteState,
         expiry: nowSec + 600,
         created_at: now,
       }
 
-      vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([
-        expiredQuote,
-        validQuote,
-      ])
+      vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([expiredQuote, validQuote])
 
       depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
@@ -243,6 +244,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1pold',
         state: 'UNPAID' as MintQuoteState,
         expiry: nowSec + 600,
@@ -254,16 +256,14 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1precent',
         state: 'UNPAID' as MintQuoteState,
         expiry: nowSec + 600,
         created_at: now - 1000,
       }
 
-      vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([
-        oldQuote,
-        recentQuote,
-      ])
+      vi.spyOn(quoteRepo, 'findMintQuotesByState').mockResolvedValue([oldQuote, recentQuote])
 
       depositMonitor = new DepositMonitor(backendRegistry, quoteRepo, {
         pollInterval: 100,
@@ -289,6 +289,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1psat',
         state: 'UNPAID' as MintQuoteState,
         expiry: Math.floor(now / 1000) + 600,
@@ -300,6 +301,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'btc',
         rune_id: '',
+        method: 'unit',
         request: 'tb1qbtc',
         state: 'UNPAID' as MintQuoteState,
         expiry: Math.floor(now / 1000) + 600,
@@ -331,6 +333,7 @@ describe('DepositMonitor', () => {
         amount: 100n,
         unit: 'sat',
         rune_id: '1527352:1',
+        method: 'unit',
         request: 'tb1perror',
         state: 'UNPAID' as MintQuoteState,
         expiry: Math.floor(now / 1000) + 600,

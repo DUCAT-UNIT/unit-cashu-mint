@@ -17,25 +17,30 @@ vi.mock('../../../src/runes/psbt-builder.js', () => ({
 }))
 
 vi.mock('../../../src/runes/UtxoManager.js', () => ({
-  UtxoManager: vi.fn().mockImplementation(() => ({
-    getUnspentUtxos: vi.fn().mockResolvedValue([]),
-    getSpentUtxoKeys: vi.fn().mockResolvedValue(new Set()),
-    markSpent: vi.fn().mockResolvedValue(undefined),
-    addUtxo: vi.fn().mockResolvedValue(undefined),
-    getBalance: vi.fn().mockResolvedValue(0n),
-    syncFromBlockchain: vi.fn().mockResolvedValue({ added: 0, updated: 0 }),
-  })),
+  UtxoManager: vi.fn().mockImplementation(function () {
+    return {
+      getUnspentUtxos: vi.fn().mockResolvedValue([]),
+      getSpentUtxoKeys: vi.fn().mockResolvedValue(new Set()),
+      markSpent: vi.fn().mockResolvedValue(undefined),
+      addUtxo: vi.fn().mockResolvedValue(undefined),
+      getBalance: vi.fn().mockResolvedValue(0n),
+      getClaimedDepositMap: vi.fn().mockResolvedValue(new Map()),
+      syncFromBlockchain: vi.fn().mockResolvedValue({ added: 0, updated: 0 }),
+    }
+  }),
 }))
 
 vi.mock('../../../src/runes/WalletKeyManager.js', () => ({
-  WalletKeyManager: vi.fn().mockImplementation(() => ({
-    deriveAddresses: vi.fn().mockReturnValue({
-      taprootAddress: 'tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em',
-      segwitAddress: 'tb1qtest123',
-      taprootPubkey: '02' + '0'.repeat(62),
-    }),
-    signAndExtract: vi.fn(),
-  })),
+  WalletKeyManager: vi.fn().mockImplementation(function () {
+    return {
+      deriveAddresses: vi.fn().mockReturnValue({
+        taprootAddress: 'tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em',
+        segwitAddress: 'tb1qtest123',
+        taprootPubkey: '02' + '0'.repeat(62),
+      }),
+      signAndExtract: vi.fn(),
+    }
+  }),
 }))
 
 vi.mock('../../../src/utils/logger.js', () => ({
@@ -90,13 +95,20 @@ describe('RunesBackend', () => {
       markSpent: vi.fn().mockResolvedValue(undefined),
       addUtxo: vi.fn().mockResolvedValue(undefined),
       getBalance: vi.fn().mockResolvedValue(0n),
+      getClaimedDepositMap: vi.fn().mockResolvedValue(new Map()),
       syncFromBlockchain: vi.fn().mockResolvedValue({ added: 0, updated: 0 }),
     }
 
     // Mock the constructors
-    vi.mocked(OrdClient).mockImplementation(() => mockOrdClient)
-    vi.mocked(EsploraClient).mockImplementation(() => mockEsploraClient)
-    vi.mocked(UtxoManager).mockImplementation(() => mockUtxoManager)
+    vi.mocked(OrdClient).mockImplementation(function () {
+      return mockOrdClient
+    })
+    vi.mocked(EsploraClient).mockImplementation(function () {
+      return mockEsploraClient
+    })
+    vi.mocked(UtxoManager).mockImplementation(function () {
+      return mockUtxoManager
+    })
 
     mockDb = {} as Pool
     runesBackend = new RunesBackend(mockDb)
@@ -317,8 +329,9 @@ describe('RunesBackend', () => {
     it('should handle API errors gracefully', async () => {
       mockOrdClient.getAddressOutputs.mockRejectedValue(new Error('API timeout'))
 
-      await expect(runesBackend.checkDeposit(quoteId, depositAddress))
-        .rejects.toThrow('API timeout')
+      await expect(runesBackend.checkDeposit(quoteId, depositAddress)).rejects.toThrow(
+        'API timeout'
+      )
     })
 
     it('should skip UTXO when getOutput returns no runes field', async () => {
@@ -363,15 +376,13 @@ describe('RunesBackend', () => {
       })
 
       // First UTXO returns null-ish response
-      mockOrdClient.getOutput
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({
-          transaction: 'txid_valid',
-          value: 10000,
-          runes: {
-            [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '1527352:1' },
-          },
-        })
+      mockOrdClient.getOutput.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        transaction: 'txid_valid',
+        value: 10000,
+        runes: {
+          [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '1527352:1' },
+        },
+      })
 
       mockEsploraClient.getTransaction.mockResolvedValue({
         txid: 'txid_valid',
@@ -422,11 +433,7 @@ describe('RunesBackend', () => {
 
   describe('createDepositAddress', () => {
     it('should return the mint taproot address', async () => {
-      const address = await runesBackend.createDepositAddress(
-        'quote123',
-        1000n,
-        '1527352:1'
-      )
+      const address = await runesBackend.createDepositAddress('quote123', 1000n, '1527352:1')
 
       // Should return the mint's taproot address
       expect(address).toBe('tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em')
@@ -478,7 +485,13 @@ describe('RunesBackend', () => {
 
     it('should successfully send runes', async () => {
       const mockRumeUtxos = [
-        { txid: 'rune_txid', vout: 0, value: 10000, runeAmount: 1500n, runeId: { block: 1527352n, tx: 1n } },
+        {
+          txid: 'rune_txid',
+          vout: 0,
+          value: 10000,
+          runeAmount: 1500n,
+          runeId: { block: 1527352n, tx: 1n },
+        },
       ]
       const mockSatUtxo = { txid: 'sat_txid', vout: 0, value: 50000 }
 
@@ -510,8 +523,9 @@ describe('RunesBackend', () => {
     it('should throw when no UTXOs found', async () => {
       mockUtxoSelector.findUtxosForRunesTransfer.mockResolvedValue(null)
 
-      await expect(runesBackend.sendRunes(destination, amount, runeId))
-        .rejects.toThrow('Insufficient funds')
+      await expect(runesBackend.sendRunes(destination, amount, runeId)).rejects.toThrow(
+        'Insufficient funds'
+      )
     })
 
     it('should throw on TXID mismatch (MITM protection)', async () => {
@@ -529,13 +543,20 @@ describe('RunesBackend', () => {
       // Broadcast returns different txid!
       mockEsploraClient.broadcastTransaction.mockResolvedValue('different_txid')
 
-      await expect(runesBackend.sendRunes(destination, amount, runeId))
-        .rejects.toThrow('txid mismatch')
+      await expect(runesBackend.sendRunes(destination, amount, runeId)).rejects.toThrow(
+        'txid mismatch'
+      )
     })
 
     it('should not add return UTXO when no excess runes', async () => {
       const mockRumeUtxos = [
-        { txid: 'rune_txid', vout: 0, value: 10000, runeAmount: 1000n, runeId: { block: 1527352n, tx: 1n } },
+        {
+          txid: 'rune_txid',
+          vout: 0,
+          value: 10000,
+          runeAmount: 1000n,
+          runeId: { block: 1527352n, tx: 1n },
+        },
       ]
 
       mockUtxoSelector.findUtxosForRunesTransfer.mockResolvedValue({
@@ -559,8 +580,9 @@ describe('RunesBackend', () => {
     it('should handle errors and rethrow', async () => {
       mockUtxoSelector.findUtxosForRunesTransfer.mockRejectedValue(new Error('Network error'))
 
-      await expect(runesBackend.sendRunes(destination, amount, runeId))
-        .rejects.toThrow('Network error')
+      await expect(runesBackend.sendRunes(destination, amount, runeId)).rejects.toThrow(
+        'Network error'
+      )
     })
   })
 
@@ -675,26 +697,38 @@ describe('RunesBackend Constructor - Environment Configuration', () => {
     }))
 
     vi.doMock('../../../src/runes/api-client.js', () => ({
-      OrdClient: vi.fn().mockImplementation(() => ({})),
-      EsploraClient: vi.fn().mockImplementation(() => ({})),
+      OrdClient: vi.fn().mockImplementation(function () {
+        return {}
+      }),
+      EsploraClient: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/utxo-selection.js', () => ({
-      UtxoSelector: vi.fn().mockImplementation(() => ({})),
+      UtxoSelector: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/psbt-builder.js', () => ({
-      RunesPsbtBuilder: vi.fn().mockImplementation(() => ({})),
+      RunesPsbtBuilder: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/UtxoManager.js', () => ({
-      UtxoManager: vi.fn().mockImplementation(() => ({})),
+      UtxoManager: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/WalletKeyManager.js', () => ({
-      WalletKeyManager: vi.fn().mockImplementation(() => ({
-        deriveAddresses: vi.fn(),
-      })),
+      WalletKeyManager: vi.fn().mockImplementation(function () {
+        return {
+          deriveAddresses: vi.fn(),
+        }
+      }),
     }))
 
     vi.doMock('../../../src/utils/logger.js', () => ({
@@ -723,26 +757,38 @@ describe('RunesBackend Constructor - Environment Configuration', () => {
     }))
 
     vi.doMock('../../../src/runes/api-client.js', () => ({
-      OrdClient: vi.fn().mockImplementation(() => ({})),
-      EsploraClient: vi.fn().mockImplementation(() => ({})),
+      OrdClient: vi.fn().mockImplementation(function () {
+        return {}
+      }),
+      EsploraClient: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/utxo-selection.js', () => ({
-      UtxoSelector: vi.fn().mockImplementation(() => ({})),
+      UtxoSelector: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/psbt-builder.js', () => ({
-      RunesPsbtBuilder: vi.fn().mockImplementation(() => ({})),
+      RunesPsbtBuilder: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/UtxoManager.js', () => ({
-      UtxoManager: vi.fn().mockImplementation(() => ({})),
+      UtxoManager: vi.fn().mockImplementation(function () {
+        return {}
+      }),
     }))
 
     vi.doMock('../../../src/runes/WalletKeyManager.js', () => ({
-      WalletKeyManager: vi.fn().mockImplementation(() => ({
-        deriveAddresses: vi.fn(),
-      })),
+      WalletKeyManager: vi.fn().mockImplementation(function () {
+        return {
+          deriveAddresses: vi.fn(),
+        }
+      }),
     }))
 
     vi.doMock('../../../src/utils/logger.js', () => ({

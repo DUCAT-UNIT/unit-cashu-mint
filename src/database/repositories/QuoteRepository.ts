@@ -1,3 +1,4 @@
+import type pg from 'pg'
 import { query, transaction } from '../db.js'
 import {
   MintQuote,
@@ -8,7 +9,7 @@ import {
   meltQuoteFromRow,
 } from '../../core/models/Quote.js'
 import { BlindSignature, MintQuoteState, MeltQuoteState } from '../../types/cashu.js'
-import { QuoteNotFoundError } from '../../utils/errors.js'
+import { MintError, QuoteNotFoundError } from '../../utils/errors.js'
 
 export class QuoteRepository {
   // Mint Quotes
@@ -60,6 +61,24 @@ export class QuoteRepository {
     return quote
   }
 
+  async withMintQuoteLock<T>(
+    id: string,
+    callback: (quote: MintQuote, client: pg.PoolClient) => Promise<T>
+  ): Promise<T> {
+    return transaction(async (client) => {
+      const result = await client.query<MintQuoteRow>(
+        'SELECT * FROM mint_quotes WHERE id = $1 FOR UPDATE',
+        [id]
+      )
+
+      if (result.rows.length === 0) {
+        throw new QuoteNotFoundError(id)
+      }
+
+      return callback(mintQuoteFromRow(result.rows[0]), client)
+    })
+  }
+
   async findMintQuoteByRequest(request: string): Promise<MintQuote | null> {
     const result = await query<MintQuoteRow>('SELECT * FROM mint_quotes WHERE request = $1', [
       request,
@@ -76,11 +95,15 @@ export class QuoteRepository {
     id: string,
     state: MintQuoteState,
     txid?: string,
-    vout?: number
+    vout?: number,
+    client?: pg.PoolClient
   ): Promise<void> {
     const paid_at = state === 'PAID' ? Date.now() : undefined
+    const runQuery: (text: string, params?: unknown[]) => Promise<pg.QueryResult> = client
+      ? client.query.bind(client)
+      : query
 
-    await query(
+    await runQuery(
       `
       UPDATE mint_quotes
       SET state = $1,
@@ -93,11 +116,15 @@ export class QuoteRepository {
     )
 
     if (state === 'ISSUED') {
-      await query('UPDATE mint_deposits SET issued_at = COALESCE(issued_at, $1) WHERE quote_id = $2', [
-        Date.now(),
-        id,
-      ])
+      await runQuery(
+        'UPDATE mint_deposits SET issued_at = COALESCE(issued_at, $1) WHERE quote_id = $2',
+        [Date.now(), id]
+      )
     }
+  }
+
+  async markMintQuoteIssued(id: string, client?: pg.PoolClient): Promise<void> {
+    await this.updateMintQuoteState(id, 'ISSUED', undefined, undefined, client)
   }
 
   async updateMintQuotePayment(
@@ -140,15 +167,7 @@ export class QuoteRepository {
         ON CONFLICT (txid, vout) DO NOTHING
         RETURNING quote_id
       `,
-        [
-          params.quoteId,
-          params.method,
-          params.unit,
-          params.txid,
-          params.vout,
-          amount,
-          claimedAt,
-        ]
+        [params.quoteId, params.method, params.unit, params.txid, params.vout, amount, claimedAt]
       )
 
       if (!claimResult.rowCount) {
@@ -196,8 +215,15 @@ export class QuoteRepository {
     })
   }
 
-  async incrementMintQuoteIssued(id: string, amount: number): Promise<void> {
-    await query(
+  async incrementMintQuoteIssued(
+    id: string,
+    amount: number,
+    client?: pg.PoolClient
+  ): Promise<void> {
+    const runQuery: (text: string, params?: unknown[]) => Promise<pg.QueryResult> = client
+      ? client.query.bind(client)
+      : query
+    await runQuery(
       `
       UPDATE mint_quotes
       SET amount_issued = amount_issued + $1,
@@ -274,6 +300,33 @@ export class QuoteRepository {
       throw new QuoteNotFoundError(id)
     }
     return quote
+  }
+
+  async claimMeltQuotePending(id: string): Promise<MeltQuote> {
+    return transaction(async (client) => {
+      const result = await client.query<MeltQuoteRow>(
+        'SELECT * FROM melt_quotes WHERE id = $1 FOR UPDATE',
+        [id]
+      )
+
+      if (result.rows.length === 0) {
+        throw new QuoteNotFoundError(id)
+      }
+
+      const quote = meltQuoteFromRow(result.rows[0])
+      if (quote.state === 'PAID') {
+        throw new MintError('Request already paid', 20006, 'Request already paid')
+      }
+      if (quote.state === 'PENDING') {
+        throw new MintError('Quote is pending', 20005, 'Quote is pending')
+      }
+
+      await client.query('UPDATE melt_quotes SET state = $1 WHERE id = $2', ['PENDING', id])
+      return {
+        ...quote,
+        state: 'PENDING',
+      }
+    })
   }
 
   async findSettledMeltQuoteByRequest(

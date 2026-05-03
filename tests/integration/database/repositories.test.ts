@@ -75,9 +75,9 @@ describe('ProofRepository', () => {
 
       await proofRepo.markSpent([testProof], [Y], 'test_tx_1')
 
-      await expect(
-        proofRepo.markSpent([testProof], [Y], 'test_tx_2')
-      ).rejects.toThrow('Proof already spent')
+      await expect(proofRepo.markSpent([testProof], [Y], 'test_tx_2')).rejects.toThrow(
+        'Proof already spent'
+      )
     })
 
     it('should handle proofs with witness', async () => {
@@ -343,9 +343,7 @@ describe('KeysetRepository', () => {
 
   describe('findByIdOrThrow', () => {
     it('should throw for nonexistent keyset', async () => {
-      await expect(
-        keysetRepo.findByIdOrThrow('nonexistent')
-      ).rejects.toThrow('Keyset not found')
+      await expect(keysetRepo.findByIdOrThrow('nonexistent')).rejects.toThrow('Keyset not found')
     })
   })
 

@@ -1,7 +1,7 @@
 import { createHash } from 'crypto'
-import { encode, sign, type TagData } from 'bolt11'
 import { DepositStatus, IPaymentBackend, WithdrawalResult } from '../core/payment/types.js'
 import { logger } from '../utils/logger.js'
+import { createBolt11Invoice } from './bolt11.js'
 
 const MAINNET = {
   bech32: 'bc',
@@ -22,7 +22,7 @@ export class FakeLightningBackend implements IPaymentBackend {
   private readonly feePaid = 1
 
   async createDepositAddress(quoteId: string, amount: bigint): Promise<string> {
-    const invoice = this.fakeInvoice(quoteId, amount)
+    const invoice = await this.fakeInvoice(quoteId, amount)
     logger.info({ quoteId, amount: amount.toString() }, 'Created fake bolt11 mint quote')
     return invoice
   }
@@ -73,36 +73,17 @@ export class FakeLightningBackend implements IPaymentBackend {
     return createHash('sha256').update(value).digest('hex')
   }
 
-  private fakeInvoice(quoteId: string, amount: bigint): string {
-    const encoded = encode(
-      {
-        network: MAINNET,
-        satoshis: Number(amount),
-        timestamp: Math.floor(Date.now() / 1000),
-        tags: [
-          { tagName: 'payment_hash', data: this.paymentId(`payment:${quoteId}`) },
-          { tagName: 'description', data: `Ducat fake mint quote ${quoteId}` },
-          { tagName: 'expire_time', data: 3600 },
-          { tagName: 'payment_secret', data: this.paymentId(`secret:${quoteId}`) },
-          {
-            tagName: 'feature_bits',
-            data: {
-              word_length: 4,
-              payment_secret: {
-                required: false,
-                supported: true,
-              },
-            } as unknown as TagData,
-          },
-          { tagName: 'min_final_cltv_expiry', data: 9 },
-        ],
-      },
-      true
-    )
-    const signed = sign(encoded, FAKE_LIGHTNING_PRIVATE_KEY)
-    if (!signed.paymentRequest) {
-      throw new Error('Failed to build fake bolt11 invoice')
-    }
-    return signed.paymentRequest
+  private async fakeInvoice(quoteId: string, amount: bigint): Promise<string> {
+    return createBolt11Invoice({
+      network: MAINNET,
+      satoshis: amount,
+      timestamp: Math.floor(Date.now() / 1000),
+      paymentHash: this.paymentId(`payment:${quoteId}`),
+      description: `Ducat fake mint quote ${quoteId}`,
+      expirySeconds: 3600,
+      paymentSecret: this.paymentId(`secret:${quoteId}`),
+      minFinalCltvExpiry: 9,
+      privateKey: FAKE_LIGHTNING_PRIVATE_KEY,
+    })
   }
 }

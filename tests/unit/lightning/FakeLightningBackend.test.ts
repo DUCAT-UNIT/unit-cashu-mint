@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decode } from 'bolt11'
+import { decodeBolt11Invoice } from '../../../src/lightning/bolt11.js'
 import { FakeLightningBackend } from '../../../src/lightning/FakeLightningBackend.js'
 
 describe('FakeLightningBackend', () => {
@@ -8,7 +8,7 @@ describe('FakeLightningBackend', () => {
 
     const invoice = await backend.createDepositAddress('quote-id', 62n)
     const status = await backend.checkDeposit('quote-id', invoice, false, 62n)
-    const decoded = decode(invoice)
+    const decoded = decodeBolt11Invoice(invoice)
 
     expect(invoice).toContain('lnbc620n')
     expect(decoded.satoshis).toBe(62)

@@ -28,7 +28,7 @@ declare module 'fastify' {
  */
 export async function createServer() {
   const server = Fastify({
-    logger: logger,
+    loggerInstance: logger,
     requestIdLogLabel: 'reqId',
     disableRequestLogging: false,
   })
@@ -55,35 +55,37 @@ export async function createServer() {
   // Error handler. Register this before route plugins so plugin-scoped routes
   // inherit Cashu/NUT-00 error formatting.
   server.setErrorHandler((error, request, reply) => {
+    const requestError = error instanceof Error ? error : new Error(String(error))
+
     logger.error(
       {
-        err: error,
+        err: requestError,
         reqId: request.id,
         method: request.method,
         url: request.url,
-        stack: error.stack,
+        stack: requestError.stack,
       },
       'Request error'
     )
 
     // Handle MintError instances
-    if (error.name === 'MintError') {
-      const mintError = error as unknown as { code?: number; detail?: string }
+    if (requestError.name === 'MintError') {
+      const mintError = requestError as unknown as { code?: number; detail?: string }
       return reply.status(400).send({
-        error: error.message,
+        error: requestError.message,
         code: mintError.code,
-        detail: mintError.detail ?? error.message,
+        detail: mintError.detail ?? requestError.message,
       })
     }
 
     // Default error
     const response: { error: string; detail?: string; stack?: string } = {
-      error: error.message || 'Internal server error',
+      error: requestError.message || 'Internal server error',
     }
 
     if (env.NODE_ENV === 'development') {
-      response.detail = error.message
-      response.stack = error.stack
+      response.detail = requestError.message
+      response.stack = requestError.stack
     }
 
     return reply.status(500).send(response)

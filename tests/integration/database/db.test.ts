@@ -21,9 +21,7 @@ describe('Database', () => {
     })
 
     it('should throw on invalid query', async () => {
-      await expect(
-        query('SELECT * FROM nonexistent_table_xyz')
-      ).rejects.toThrow()
+      await expect(query('SELECT * FROM nonexistent_table_xyz')).rejects.toThrow()
     })
   })
 

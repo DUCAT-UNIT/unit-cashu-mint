@@ -52,9 +52,10 @@ describe('KeyManager', () => {
         [keyset.id]
       )
 
-      const dbPrivateKeys = typeof result.rows[0].private_keys === 'string'
-        ? JSON.parse(result.rows[0].private_keys)
-        : result.rows[0].private_keys
+      const dbPrivateKeys =
+        typeof result.rows[0].private_keys === 'string'
+          ? JSON.parse(result.rows[0].private_keys)
+          : result.rows[0].private_keys
 
       // Private keys in DB should be encrypted (contain IV:encrypted format)
       expect(dbPrivateKeys[1]).toContain(':')

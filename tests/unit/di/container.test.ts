@@ -1,12 +1,7 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { initializeContainer } from '../../../src/di/container.js'
-import { testConnection } from '../../../src/database/db.js'
 
 describe('DI Container', () => {
-  beforeAll(async () => {
-    await testConnection()
-  })
-
   it('should initialize container with all dependencies', () => {
     const container = initializeContainer()
 
