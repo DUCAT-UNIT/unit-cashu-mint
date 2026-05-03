@@ -98,6 +98,14 @@ describe('Mint Integration Tests', () => {
   const RUNE_ID = '840000:3' // DUCAT•UNIT•RUNE
   const UNIT = 'unit' // UNIT tokens, not sats!
 
+  async function markMintQuotePaid(
+    quote: { quote: string; request: string },
+    amount: number
+  ): Promise<void> {
+    runesBackend.simulateDeposit(quote.quote, quote.request, BigInt(amount))
+    await quoteRepo.updateMintQuoteState(quote.quote, 'PAID')
+  }
+
   beforeAll(async () => {
     // Test database connection
     await testConnection()
@@ -164,8 +172,8 @@ describe('Mint Integration Tests', () => {
       // 1. Create quote
       const quote = await mintService.createMintQuote(amount, UNIT, RUNE_ID)
 
-      // 2. Simulate payment by updating quote state
-      await quoteRepo.updateMintQuoteState(quote.quote, 'PAID')
+      // 2. Simulate payment by confirming the mocked deposit
+      await markMintQuotePaid(quote, amount)
 
       // 3. Create blinded messages for the amount
       // Split 1024 into denominations: 1024
@@ -190,7 +198,7 @@ describe('Mint Integration Tests', () => {
       expect(updatedQuote.state).toBe('ISSUED')
     })
 
-    it('should reject minting with unpaid quote', async () => {
+    it('should reject minting without confirmed deposit', async () => {
       const amount = 512
       const quote = await mintService.createMintQuote(amount, UNIT, RUNE_ID)
 
@@ -198,13 +206,13 @@ describe('Mint Integration Tests', () => {
 
       await expect(
         mintService.mintTokens(quote.quote, [blindedMessage])
-      ).rejects.toThrow('not paid')
+      ).rejects.toThrow('Deposit requires')
     })
 
     it('should reject minting with amount mismatch', async () => {
       const amount = 1000
       const quote = await mintService.createMintQuote(amount, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(quote.quote, 'PAID')
+      await markMintQuotePaid(quote, amount)
 
       // Try to mint 512 instead of 1000
       const { blindedMessage } = blindMessage(randomBytes(32).toString('hex'), 512, testKeysetId)
@@ -222,7 +230,7 @@ describe('Mint Integration Tests', () => {
       // Mint some tokens first
       const amount = 2048
       const quote = await mintService.createMintQuote(amount, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(quote.quote, 'PAID')
+      await markMintQuotePaid(quote, amount)
 
       // Create 2 proofs: 1024 + 1024
       const secrets = [
@@ -304,7 +312,7 @@ describe('Mint Integration Tests', () => {
       // Create fresh proofs for this test
       const amount = 2048
       const quote = await mintService.createMintQuote(amount, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(quote.quote, 'PAID')
+      await markMintQuotePaid(quote, amount)
 
       const secrets = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')]
       const blindedMessages: BlindedMessage[] = []
@@ -358,7 +366,7 @@ describe('Mint Integration Tests', () => {
       // Mint fresh tokens for melt tests
       const amount = 4096
       const quote = await mintService.createMintQuote(amount, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(quote.quote, 'PAID')
+      await markMintQuotePaid(quote, amount)
 
       const secrets = [
         randomBytes(32).toString('hex'),
@@ -449,7 +457,7 @@ describe('Mint Integration Tests', () => {
 
       // Create and mint tokens
       const mintQuote = await mintService.createMintQuote(2048, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(mintQuote.quote, 'PAID')
+      await markMintQuotePaid(mintQuote, 2048)
 
       const secret = randomBytes(32).toString('hex')
       const { blindedMessage, blindingFactor } = blindMessage(secret, 2048, testKeysetId)
@@ -484,7 +492,7 @@ describe('Mint Integration Tests', () => {
 
       // Mint small amount
       const mintQuote = await mintService.createMintQuote(1024, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(mintQuote.quote, 'PAID')
+      await markMintQuotePaid(mintQuote, 1024)
 
       const secret = randomBytes(32).toString('hex')
       const { blindedMessage, blindingFactor } = blindMessage(secret, 1024, testKeysetId)
@@ -509,7 +517,7 @@ describe('Mint Integration Tests', () => {
 
       // 1. MINT: Create quote and mint tokens
       const mintQuote = await mintService.createMintQuote(initialAmount, UNIT, RUNE_ID)
-      await quoteRepo.updateMintQuoteState(mintQuote.quote, 'PAID')
+      await markMintQuotePaid(mintQuote, initialAmount)
 
       // Mint as 2x4096
       const mintSecrets = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')]
