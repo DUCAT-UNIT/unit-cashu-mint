@@ -12,8 +12,8 @@ bitcoin.initEccLib(ecc)
 /**
  * Get Bitcoin network configuration based on environment
  */
-function getNetwork(): bitcoin.Network {
-  switch (env.NETWORK) {
+function getNetwork(networkName: string = env.NETWORK): bitcoin.Network {
+  switch (networkName) {
     case 'mainnet':
       return bitcoin.networks.bitcoin
     case 'testnet':
@@ -50,8 +50,8 @@ export interface BTCTransactionResult {
 export class BTCTxBuilder {
   private network: bitcoin.Network
 
-  constructor() {
-    this.network = getNetwork()
+  constructor(networkName?: string) {
+    this.network = getNetwork(networkName)
   }
 
   /**

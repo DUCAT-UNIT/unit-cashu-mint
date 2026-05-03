@@ -28,7 +28,7 @@ export class BTCBackend implements IPaymentBackend {
   constructor(config: BTCConfig, esploraClient?: EsploraClient) {
     this.config = config
     this.esploraClient = esploraClient || new EsploraClient()
-    this.txBuilder = new BTCTxBuilder()
+    this.txBuilder = new BTCTxBuilder(config.network)
 
     logger.info(
       {
