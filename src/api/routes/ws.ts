@@ -27,13 +27,29 @@ type SocketLike = {
   readyState: number
 }
 
+type WebSocketHandlerArg = SocketLike | { socket?: SocketLike }
+
+function resolveSocket(connection: WebSocketHandlerArg): SocketLike | undefined {
+  const direct = connection as Partial<SocketLike>
+  if (typeof direct.on === 'function' && typeof direct.send === 'function') {
+    return connection as SocketLike
+  }
+
+  return (connection as { socket?: SocketLike }).socket
+}
+
 export const wsRoutes: FastifyPluginAsync = async (fastify) => {
   const mintService = fastify.diContainer.resolve<MintService>('mintService')
   const meltService = fastify.diContainer.resolve<MeltService>('meltService')
   const checkStateService = fastify.diContainer.resolve<CheckStateService>('checkStateService')
 
   fastify.get('/v1/ws', { websocket: true }, (connection) => {
-    const socket = (connection as { socket: SocketLike }).socket
+    const socket = resolveSocket(connection as WebSocketHandlerArg)
+    if (!socket) {
+      fastify.log.error('WebSocket connection did not include a socket')
+      return
+    }
+
     const subscriptions = new Map<string, Subscription>()
 
     const send = (message: Record<string, unknown>) => {

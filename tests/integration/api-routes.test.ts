@@ -110,7 +110,7 @@ describe('API Routes Integration', () => {
 
       expect(response.statusCode).toBe(400)
       const body = JSON.parse(response.body)
-      expect(body.error).toBe('Invalid amount')
+      expect(body.error).toBe('Invalid amount - must be a positive integer (smallest units)')
     })
 
     it('POST /v1/mint/quote/runes should fail with missing unit', async () => {
@@ -140,7 +140,7 @@ describe('API Routes Integration', () => {
 
       expect(response.statusCode).toBe(400)
       const body = JSON.parse(response.body)
-      expect(body.error).toBe('Rune ID required')
+      expect(body.error).toBe('Rune ID required for unit')
     })
 
     it('GET /v1/mint/quote/runes/:quote_id should get quote status', async () => {
@@ -264,7 +264,7 @@ describe('API Routes Integration', () => {
 
       expect(response.statusCode).toBe(400)
       const body = JSON.parse(response.body)
-      expect(body.error).toBe('Invalid amount')
+      expect(body.error).toBe('Invalid amount - must be a positive integer (smallest units)')
     })
 
     it('POST /v1/melt/quote/runes should fail with missing unit', async () => {
@@ -296,7 +296,7 @@ describe('API Routes Integration', () => {
 
       expect(response.statusCode).toBe(400)
       const body = JSON.parse(response.body)
-      expect(body.error).toBe('Rune ID required')
+      expect(body.error).toBe('Rune ID required for unit')
     })
 
     it('POST /v1/melt/quote/runes should fail with missing destination address', async () => {

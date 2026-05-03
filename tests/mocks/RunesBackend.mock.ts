@@ -1,17 +1,28 @@
-import { IPaymentBackend, RunesDepositStatus, RunesWithdrawalResult } from '../../src/runes/RunesBackend.js'
+import type {
+  DepositStatus,
+  IPaymentBackend,
+  WithdrawalResult,
+} from '../../src/core/payment/types.js'
 
 /**
  * Mock RunesBackend for testing
  * Simulates Runes operations without requiring actual blockchain interaction
  */
 export class MockRunesBackend implements IPaymentBackend {
+  readonly method = 'onchain'
+  readonly unit = 'unit'
+
   private deposits = new Map<string, { confirmed: boolean; amount: bigint }>()
   private balances = new Map<string, bigint>()
 
   /**
    * Create a mock deposit address
    */
-  async createDepositAddress(quoteId: string, amount: bigint, runeId: string): Promise<string> {
+  async createDepositAddress(
+    quoteId: string,
+    amount: bigint,
+    _runeId?: string
+  ): Promise<string> {
     // Generate a fake taproot address
     const mockAddress = `bc1p${quoteId.slice(0, 58)}`
 
@@ -25,7 +36,7 @@ export class MockRunesBackend implements IPaymentBackend {
    * Check deposit status
    * By default returns unconfirmed, tests can call simulateDeposit() to mark as confirmed
    */
-  async checkDeposit(_quoteId: string, depositAddress: string): Promise<RunesDepositStatus> {
+  async checkDeposit(_quoteId: string, depositAddress: string): Promise<DepositStatus> {
     const deposit = this.deposits.get(depositAddress)
 
     if (!deposit) {
@@ -51,10 +62,24 @@ export class MockRunesBackend implements IPaymentBackend {
     }
   }
 
+  async verifySpecificDeposit(
+    quoteId: string,
+    txid: string,
+    vout: number
+  ): Promise<DepositStatus> {
+    return {
+      confirmed: true,
+      amount: 0n,
+      txid,
+      vout,
+      confirmations: 1,
+    }
+  }
+
   /**
    * Estimate fee for withdrawal
    */
-  async estimateFee(_destination: string, _amount: bigint, _runeId: string): Promise<number> {
+  async estimateFee(_destination: string, _amount: bigint, _runeId?: string): Promise<number> {
     return 1000 // Fixed fee for tests
   }
 
@@ -66,7 +91,7 @@ export class MockRunesBackend implements IPaymentBackend {
     _destination: string,
     amount: bigint,
     runeId: string
-  ): Promise<RunesWithdrawalResult> {
+  ): Promise<WithdrawalResult> {
     // Deduct from balance
     const currentBalance = this.balances.get(runeId) || 0n
     if (currentBalance < amount) {
@@ -82,11 +107,17 @@ export class MockRunesBackend implements IPaymentBackend {
     }
   }
 
+  async withdraw(destination: string, amount: bigint): Promise<WithdrawalResult> {
+    const runeId = this.balances.keys().next().value ?? '840000:3'
+    return this.sendRunes(destination, amount, runeId)
+  }
+
   /**
    * Get balance for a rune
    */
-  async getBalance(runeId: string): Promise<bigint> {
-    return this.balances.get(runeId) || 0n
+  async getBalance(runeId?: string): Promise<bigint> {
+    const resolvedRuneId = runeId ?? this.balances.keys().next().value ?? '840000:3'
+    return this.balances.get(resolvedRuneId) || 0n
   }
 
   /**

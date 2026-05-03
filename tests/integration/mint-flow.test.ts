@@ -10,6 +10,7 @@ import { MeltService } from '../../src/core/services/MeltService.js'
 import { KeysetRepository } from '../../src/database/repositories/KeysetRepository.js'
 import { QuoteRepository } from '../../src/database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../../src/database/repositories/ProofRepository.js'
+import { BackendRegistry } from '../../src/core/payment/BackendRegistry.js'
 import { BlindedMessage, Proof } from '../../src/types/cashu.js'
 import { testConnection } from '../../src/database/db.js'
 import { MockRunesBackend } from '../mocks/RunesBackend.mock.js'
@@ -88,6 +89,7 @@ describe('Mint Integration Tests', () => {
   let keysetRepo: KeysetRepository
   let quoteRepo: QuoteRepository
   let proofRepo: ProofRepository
+  let backendRegistry: BackendRegistry
   let runesBackend: MockRunesBackend
 
   let testKeysetId: string
@@ -107,6 +109,8 @@ describe('Mint Integration Tests', () => {
 
     // Initialize mock Runes backend
     runesBackend = new MockRunesBackend()
+    backendRegistry = new BackendRegistry()
+    backendRegistry.register(runesBackend, [], ['unit', 'runes'])
 
     // Set initial balance for tests (100 million sats worth of runes)
     runesBackend.setBalance(RUNE_ID, 100_000_000n)
@@ -116,9 +120,9 @@ describe('Mint Integration Tests', () => {
     mintCrypto = new MintCrypto(keyManager)
 
     // Initialize services with RunesBackend
-    mintService = new MintService(mintCrypto, quoteRepo, runesBackend)
+    mintService = new MintService(mintCrypto, quoteRepo, backendRegistry, keyManager)
     swapService = new SwapService(mintCrypto, proofRepo)
-    meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, runesBackend)
+    meltService = new MeltService(mintCrypto, quoteRepo, proofRepo, backendRegistry)
 
     // Generate a test keyset
     const keyset = await keyManager.generateKeyset(RUNE_ID, UNIT)

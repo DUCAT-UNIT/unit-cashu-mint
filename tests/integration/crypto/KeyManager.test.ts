@@ -57,9 +57,10 @@ describe('KeyManager', () => {
           ? JSON.parse(result.rows[0].private_keys)
           : result.rows[0].private_keys
 
-      // Private keys in DB should be encrypted (contain IV:encrypted format)
+      // Private keys in DB should be encrypted (local-v1:iv:tag:encrypted format)
       expect(dbPrivateKeys[1]).toContain(':')
-      expect(dbPrivateKeys[1].split(':').length).toBe(2)
+      expect(dbPrivateKeys[1]).toMatch(/^local-v1:[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/)
+      expect(dbPrivateKeys[1].split(':').length).toBe(4)
     })
   })
 
