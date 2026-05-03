@@ -410,7 +410,7 @@ describe('Mint Integration Tests', () => {
       expect(quote.unit).toBe(UNIT)
       expect(quote.state).toBe('UNPAID')
       expect(quote.request).toBe(destination)
-      expect(quote.fee_reserve).toBeGreaterThan(0)
+      expect(quote.fee_reserve).toBe(0)
       expect(quote.expiry).toBeGreaterThan(Date.now() / 1000)
     })
 
@@ -433,12 +433,12 @@ describe('Mint Integration Tests', () => {
       // 1. Create melt quote
       const quote = await meltService.createMeltQuote(amount, UNIT, RUNE_ID, destination)
 
-      // 2. Melt tokens (4096 total from freshProofs covers 3000 + fee)
+      // 2. Melt tokens (4096 total from freshProofs covers 3000)
       const result = await meltService.meltTokens(quote.quote, freshProofs)
 
       // With the RunesBackend integration, withdrawal completes immediately in tests
       expect(result.state).toBe('PAID')
-      expect(result.txid).toBeDefined()
+      expect(result.payment_preimage).toBeDefined()
 
       // 3. Verify quote is PAID
       const updatedQuote = await meltService.getMeltQuote(quote.quote)
@@ -476,7 +476,7 @@ describe('Mint Integration Tests', () => {
 
       // Melt completes immediately with mock RunesBackend
       expect(result.state).toBe('PAID')
-      expect(result.txid).toBeDefined()
+      expect(result.payment_preimage).toBeDefined()
 
       // Verify quote is PAID
       const completedQuote = await meltService.getMeltQuote(meltQuote.quote)
@@ -560,20 +560,19 @@ describe('Mint Integration Tests', () => {
       }))
 
       // 3. MELT: Redeem 5x1024 = 5120 sats
-      // But we need to provide exactly amount + fee_reserve
       const meltAmount = 5000
       const destination = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'
 
       const meltQuote = await meltService.createMeltQuote(meltAmount, UNIT, RUNE_ID, destination)
 
-      // Quote requires amount + fee_reserve (5000 + 1000 = 6000)
-      // Use 6 proofs for melt (6 * 1024 = 6144, which covers 6000)
+      // UNIT quotes do not require a Cashu fee reserve.
+      // Use 6 proofs for melt (6 * 1024 = 6144, which covers 5000)
       const proofsToMelt = swappedProofs.slice(0, 6)
       const meltResult = await meltService.meltTokens(meltQuote.quote, proofsToMelt)
 
       // Melt completes immediately with mock RunesBackend
       expect(meltResult.state).toBe('PAID')
-      expect(meltResult.txid).toBeDefined()
+      expect(meltResult.payment_preimage).toBeDefined()
 
       const finalQuote = await meltService.getMeltQuote(meltQuote.quote)
       expect(finalQuote.state).toBe('PAID')
