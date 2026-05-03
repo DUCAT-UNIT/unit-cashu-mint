@@ -56,17 +56,14 @@ describe('MeltService', () => {
       'tb1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'
     )
 
-    expect(backend.estimateFee).toHaveBeenCalledWith(
-      'tb1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
-      500n
-    )
+    expect(backend.estimateFee).not.toHaveBeenCalled()
     expect(quoteRepo.createMeltQuote).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 500,
         unit: 'unit',
         rune_id: '1527352:1',
         method: 'onchain',
-        fee: 1234,
+        fee: 0,
         estimated_blocks: 1,
       })
     )
@@ -74,11 +71,67 @@ describe('MeltService', () => {
       expect.objectContaining({
         amount: 500,
         unit: 'unit',
-        fee: 1234,
+        fee: 0,
         estimated_blocks: 1,
         state: 'UNPAID',
       }),
     ])
+  })
+
+  it('melts UNIT onchain without charging the wallet a miner fee', async () => {
+    const quoteId = 'unit-onchain-quote'
+    const quoteRepo = {
+      findMeltQuoteByIdOrThrow: vi.fn().mockResolvedValue({
+        id: quoteId,
+        amount: 500,
+        unit: 'unit',
+        rune_id: '1527352:1',
+        method: 'onchain',
+        request: 'tb1precipient',
+        fee_reserve: 0,
+        fee: 1234,
+        state: 'UNPAID',
+        expiry: Math.floor(Date.now() / 1000) + 3600,
+        estimated_blocks: 1,
+      }),
+      updateMeltQuoteState: vi.fn(),
+    } as unknown as QuoteRepository
+    const proofRepo = {
+      markSpent: vi.fn(),
+      deleteByTransactionId: vi.fn(),
+    } as unknown as ProofRepository
+    const mintCrypto = {
+      sumProofs: vi.fn().mockReturnValue(500),
+      ensureProofsUseUnit: vi.fn(),
+      ensureOutputsUseUnit: vi.fn(),
+      calculateInputFees: vi.fn().mockResolvedValue(0),
+      verifyProofsOrThrow: vi.fn(),
+      hashSecret: vi.fn().mockReturnValue('02' + '11'.repeat(32)),
+      signBlindedMessages: vi.fn(),
+    } as unknown as MintCrypto
+    const registry = new BackendRegistry()
+    const backend = createMockBackend('unit', 'onchain')
+    vi.mocked(backend.withdraw).mockResolvedValue({
+      txid: '1'.repeat(64),
+      fee_paid: 1234,
+    })
+    registry.register(backend, [], ['unit'])
+    const service = new MeltService(mintCrypto, quoteRepo, proofRepo, registry)
+
+    const result = await service.meltTokens(quoteId, [
+      { id: 'keyset123', amount: 500, secret: 'secret', C: '02proof' },
+    ])
+
+    expect(backend.withdraw).toHaveBeenCalledWith('tb1precipient', 500n)
+    expect(result).toEqual(
+      expect.objectContaining({
+        quote: quoteId,
+        amount: 500,
+        unit: 'unit',
+        fee: 0,
+        state: 'PENDING',
+      })
+    )
   })
 
   it('returns NUT-08 bolt11 change for unused fee reserve blanks', async () => {

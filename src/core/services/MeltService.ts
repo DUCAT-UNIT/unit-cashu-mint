@@ -130,7 +130,7 @@ export class MeltService {
     }
 
     const backend = this.backendRegistry.getByMethod('onchain', unit)
-    const fee = await backend.estimateFee(destination, BigInt(amount))
+    const fee = unit === 'unit' ? 0 : await backend.estimateFee(destination, BigInt(amount))
     const quote = await this.createMeltQuote(
       amount,
       unit,
@@ -167,7 +167,7 @@ export class MeltService {
         request: quote.request,
         amount: quote.amount,
         unit: quote.unit,
-        fee: quote.fee ?? quote.fee_paid ?? 0,
+        fee: this.quoteFeeChargedToWallet(quote),
         estimated_blocks: quote.estimated_blocks ?? 1,
         state: quote.state,
         expiry: quote.expiry,
@@ -239,7 +239,7 @@ export class MeltService {
     const inputFees = await this.mintCrypto.calculateInputFees(inputs)
     const reservedAmount =
       quote.method === 'onchain'
-        ? quote.amount + (quote.fee ?? 0) + inputFees
+        ? quote.amount + this.quoteFeeChargedToWallet(quote) + inputFees
         : quote.amount + quote.fee_reserve + inputFees
 
     if (inputAmount < reservedAmount) {
@@ -329,7 +329,7 @@ export class MeltService {
           request: quote.request,
           amount: quote.amount,
           unit: quote.unit,
-          fee: quote.fee ?? result.fee_paid,
+          fee: this.quoteFeeChargedToWallet(quote),
           estimated_blocks: quote.estimated_blocks ?? 1,
           state: 'PENDING',
           expiry: quote.expiry,
@@ -474,6 +474,19 @@ export class MeltService {
     }
 
     return denominations.reverse()
+  }
+
+  private quoteFeeChargedToWallet(quote: {
+    method: string
+    unit: string
+    fee?: number
+    fee_paid?: number
+  }): number {
+    if (quote.method === 'onchain' && quote.unit === 'unit') {
+      return 0
+    }
+
+    return quote.fee ?? quote.fee_paid ?? 0
   }
 
   private defaultRuneIdForUnit(unit: string, runeId?: string): string {
