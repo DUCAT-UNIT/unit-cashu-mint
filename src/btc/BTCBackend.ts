@@ -285,22 +285,10 @@ export class BTCBackend implements IPaymentBackend {
       )
 
       // Get UTXOs from mint address
-      const esploraUtxos = await this.esploraClient.getAddressUtxos(this.config.mintAddress)
       const blockHeight = await this.esploraClient.getBlockHeight()
 
       // Filter for confirmed UTXOs only
-      const confirmedUtxos: BTCUtxo[] = esploraUtxos
-        .filter(u => u.status.confirmed)
-        .map(u => ({
-          txid: u.txid,
-          vout: u.vout,
-          value: u.value,
-          address: this.config.mintAddress,
-          confirmations: u.status.block_height
-            ? blockHeight - u.status.block_height + 1
-            : 0,
-          accountIndex: 0,
-        }))
+      const confirmedUtxos = await this.getConfirmedMintAddressUtxos(blockHeight)
       confirmedUtxos.push(...await this.getConfirmedQuoteUtxos(blockHeight))
 
       if (confirmedUtxos.length === 0) {
@@ -312,7 +300,7 @@ export class BTCBackend implements IPaymentBackend {
         confirmedUtxos,
         destination,
         amount,
-        this.config.mintAddress, // change goes back to mint
+        this.getSignableMintAddress(), // change goes back to a seed-derived mint address
         this.config.feeRate
       )
 
@@ -360,23 +348,14 @@ export class BTCBackend implements IPaymentBackend {
    */
   async getBalance(): Promise<bigint> {
     try {
-      const utxos = await this.esploraClient.getAddressUtxos(this.config.mintAddress)
-
-      // Sum confirmed UTXO values
       const blockHeight = await this.esploraClient.getBlockHeight()
       let balance = 0n
 
-      for (const utxo of utxos) {
-        const confirmations = utxo.status.confirmed && utxo.status.block_height
-          ? blockHeight - utxo.status.block_height + 1
-          : 0
-
-        if (confirmations >= this.config.minConfirmations) {
-          balance += BigInt(utxo.value)
-        }
-      }
-
-      for (const utxo of await this.getConfirmedQuoteUtxos(blockHeight)) {
+      const spendableUtxos = [
+        ...(await this.getConfirmedMintAddressUtxos(blockHeight)),
+        ...(await this.getConfirmedQuoteUtxos(blockHeight)),
+      ]
+      for (const utxo of spendableUtxos) {
         balance += BigInt(utxo.value)
       }
 
@@ -395,6 +374,37 @@ export class BTCBackend implements IPaymentBackend {
    */
   getMintAddress(): string {
     return this.config.mintAddress
+  }
+
+  private getSignableMintAddress(): string {
+    return this.deriveDepositAddress('').address
+  }
+
+  private async getConfirmedMintAddressUtxos(blockHeight: number): Promise<BTCUtxo[]> {
+    const signableMintAddress = this.getSignableMintAddress()
+    if (this.config.mintAddress !== signableMintAddress) {
+      logger.warn(
+        {
+          configuredMintAddress: this.config.mintAddress,
+          signableMintAddress,
+        },
+        'Skipping configured BTC mint address because it is not derived from the mint seed'
+      )
+      return []
+    }
+
+    const esploraUtxos = await this.esploraClient.getAddressUtxos(this.config.mintAddress)
+    return esploraUtxos
+      .filter((utxo) => utxo.status.confirmed)
+      .map((utxo) => ({
+        txid: utxo.txid,
+        vout: utxo.vout,
+        value: utxo.value,
+        address: this.config.mintAddress,
+        confirmations: utxo.status.block_height ? blockHeight - utxo.status.block_height + 1 : 0,
+        accountIndex: 0,
+      }))
+      .filter((utxo) => (utxo.confirmations ?? 0) >= this.config.minConfirmations)
   }
 
   private deriveDepositAddress(quoteId: string): { address: string; accountIndex: number } {
@@ -430,7 +440,8 @@ export class BTCBackend implements IPaymentBackend {
         `
         SELECT DISTINCT ON (request) id, request
         FROM mint_quotes
-        WHERE unit IN ('sat', 'btc')
+        WHERE method = 'onchain'
+          AND unit IN ('sat', 'btc')
           AND request <> $1
         ORDER BY request, created_at DESC
       `,
@@ -438,8 +449,30 @@ export class BTCBackend implements IPaymentBackend {
       )
 
       for (const row of result.rows) {
-        const accountIndex = this.quoteAccountIndex(row.id)
-        const addressUtxos = await this.esploraClient.getAddressUtxos(row.request)
+        const { address: expectedAddress, accountIndex } = this.deriveDepositAddress(row.id)
+        if (row.request !== expectedAddress) {
+          logger.warn(
+            { quoteId: row.id, address: row.request },
+            'Skipping BTC mint quote address that is not derived from the mint seed'
+          )
+          continue
+        }
+
+        let addressUtxos
+        try {
+          addressUtxos = await this.esploraClient.getAddressUtxos(row.request)
+        } catch (error) {
+          logger.warn(
+            {
+              quoteId: row.id,
+              address: row.request,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Unable to scan BTC mint quote address'
+          )
+          continue
+        }
+
         for (const utxo of addressUtxos) {
           if (!utxo.status.confirmed) {
             continue

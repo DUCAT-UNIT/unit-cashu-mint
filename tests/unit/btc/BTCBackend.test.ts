@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as bitcoin from 'bitcoinjs-lib'
 import { BTCBackend } from '../../../src/btc/BTCBackend.js'
 import { BTCConfig } from '../../../src/btc/types.js'
+import { query } from '../../../src/database/db.js'
 
 // Mock the EsploraClient
 vi.mock('../../../src/runes/api-client.js', () => ({
@@ -12,6 +14,10 @@ vi.mock('../../../src/runes/api-client.js', () => ({
       broadcastTransaction: vi.fn(),
     }
   }),
+}))
+
+vi.mock('../../../src/database/db.js', () => ({
+  query: vi.fn(),
 }))
 
 // Mock the logger
@@ -30,6 +36,7 @@ describe('BTCBackend', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(query).mockResolvedValue({ rows: [] } as never)
 
     mockConfig = {
       mintAddress: 'tb1qtest123',
@@ -85,9 +92,11 @@ describe('BTCBackend', () => {
 describe('BTCBackend with mocked Esplora', () => {
   let backend: BTCBackend
   let mockEsploraClient: any
+  let mockConfig: BTCConfig
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(query).mockResolvedValue({ rows: [] } as never)
 
     mockEsploraClient = {
       getAddressUtxos: vi.fn(),
@@ -96,7 +105,7 @@ describe('BTCBackend with mocked Esplora', () => {
       broadcastTransaction: vi.fn(),
     }
 
-    const mockConfig: BTCConfig = {
+    mockConfig = {
       mintAddress: 'tb1qtest123',
       mintPubkey: '02' + '00'.repeat(32),
       feeRate: 5,
@@ -105,6 +114,7 @@ describe('BTCBackend with mocked Esplora', () => {
     }
 
     backend = new BTCBackend(mockConfig, mockEsploraClient)
+    mockConfig.mintAddress = await backend.createDepositAddress('', 0n)
   })
 
   describe('checkDeposit', () => {
@@ -207,6 +217,65 @@ describe('BTCBackend with mocked Esplora', () => {
       const balance = await backend.getBalance()
 
       expect(balance).toBe(0n)
+    })
+  })
+
+  describe('withdraw', () => {
+    it('spends seed-derived quote UTXOs instead of a configured address the signer cannot spend', async () => {
+      const watchOnlyConfig: BTCConfig = {
+        ...mockConfig,
+        mintAddress: 'tb1qwatchonlyaddress0000000000000000000000',
+      }
+      const watchOnlyBackend = new BTCBackend(watchOnlyConfig, mockEsploraClient)
+      const quoteAddress = await watchOnlyBackend.createDepositAddress('quote123', 0n)
+      const quoteTxid = '00000000000000000000000000000000000000000000000000000000000000aa'
+
+      vi.mocked(query).mockResolvedValue({
+        rows: [
+          { id: 'bolt11quote', request: 'lnbc1280n1p5lvr0dpp5...' },
+          { id: 'quote123', request: quoteAddress },
+        ],
+      } as never)
+
+      mockEsploraClient.getBlockHeight.mockResolvedValue(200)
+      mockEsploraClient.getAddressUtxos.mockImplementation(async (address: string) => {
+        if (address === quoteAddress) {
+          return [
+            {
+              txid: quoteTxid,
+              vout: 0,
+              value: 80000,
+              status: { confirmed: true, block_height: 190 },
+            },
+          ]
+        }
+
+        return [
+          {
+            txid: '00000000000000000000000000000000000000000000000000000000000000bb',
+            vout: 0,
+            value: 9616742,
+            status: { confirmed: true, block_height: 190 },
+          },
+        ]
+      })
+      mockEsploraClient.broadcastTransaction.mockImplementation(async (txHex: string) =>
+        bitcoin.Transaction.fromHex(txHex).getId()
+      )
+
+      const result = await watchOnlyBackend.withdraw(
+        'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx',
+        66740n
+      )
+
+      expect(result.fee_paid).toBe(700)
+      expect(mockEsploraClient.getAddressUtxos).toHaveBeenCalledWith(quoteAddress)
+      expect(mockEsploraClient.getAddressUtxos).not.toHaveBeenCalledWith(
+        watchOnlyConfig.mintAddress
+      )
+      expect(query).toHaveBeenCalledWith(expect.stringContaining("WHERE method = 'onchain'"), [
+        watchOnlyConfig.mintAddress,
+      ])
     })
   })
 })
