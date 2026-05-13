@@ -227,23 +227,39 @@ export class UtxoSelector {
     trackedUtxos: MintUtxoRecord[] = [],
     taprootInternalPubkeyForAccount?: (accountIndex: number) => string
   ): Promise<{ runeUtxos: RuneUtxo[]; satUtxo: SatUtxo } | null> {
-    const runeUtxos =
-      trackedUtxos.length > 0
-        ? await this.findTrackedRuneUtxos(
-            trackedUtxos,
-            requiredRunes,
-            runeName,
-            runeId,
-            spentUtxos,
-            taprootInternalPubkeyForAccount
-          )
-        : await this.findRuneUtxos(
+    let runeUtxos: RuneUtxo[] | null = null
+
+    if (trackedUtxos.length > 0) {
+      runeUtxos = await this.findTrackedRuneUtxos(
+        trackedUtxos,
+        requiredRunes,
+        runeName,
+        runeId,
+        spentUtxos,
+        taprootInternalPubkeyForAccount
+      )
+
+      if (!runeUtxos) {
+        logger.warn(
+          {
+            trackedCount: trackedUtxos.length,
+            requiredRunes: requiredRunes.toString(),
             taprootAddress,
-            requiredRunes,
-            runeName,
-            runeId,
-            spentUtxos
-          )
+          },
+          'Tracked rune reserves were insufficient; falling back to canonical mint address scan'
+        )
+      }
+    }
+
+    if (!runeUtxos) {
+      runeUtxos = await this.findRuneUtxos(
+        taprootAddress,
+        requiredRunes,
+        runeName,
+        runeId,
+        spentUtxos
+      )
+    }
 
     if (!runeUtxos) {
       return null

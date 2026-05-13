@@ -560,5 +560,63 @@ describe('UtxoSelector', () => {
 
       expect(result).toBeNull()
     })
+
+    it('falls back to canonical address scan when tracked reserves are insufficient', async () => {
+      const taprootAddress = 'tb1ptest123'
+      const segwitAddress = 'tb1qtest123'
+      const trackedUtxos = [
+        {
+          txid: 'small_tracked_txid',
+          vout: 1,
+          rune_id: '1527352:1',
+          amount: '100',
+          address: 'tb1pquoteaddress',
+          value: 10000,
+          spent: false,
+          created_at: Date.now(),
+          account_index: 4242,
+        },
+      ]
+
+      vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
+      vi.mocked(mockOrdClient.getOutput)
+        .mockResolvedValueOnce({
+          transaction: 'small_tracked_txid',
+          value: 10000,
+          runes: { [DUCAT_RUNE_NAME]: { amount: '100', id: '1527352:1' } },
+        })
+        .mockResolvedValueOnce({
+          transaction: 'canonical_rune_txid',
+          value: 10000,
+          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
+        })
+      vi.mocked(mockOrdClient.getAddressOutputs).mockResolvedValue({
+        outputs: ['canonical_rune_txid:0'],
+        runes_balances: [[DUCAT_RUNE_NAME, '1000', '$']],
+      })
+      vi.mocked(mockEsploraClient.getAddressUtxos).mockResolvedValue([
+        {
+          txid: 'sat_txid',
+          vout: 0,
+          value: 50000,
+          status: { confirmed: true, block_height: 100 },
+        },
+      ])
+
+      const result = await utxoSelector.findUtxosForRunesTransfer(
+        taprootAddress,
+        segwitAddress,
+        500n,
+        DUCAT_RUNE_NAME,
+        DUCAT_RUNE_ID,
+        new Set(),
+        trackedUtxos
+      )
+
+      expect(result).not.toBeNull()
+      expect(result!.runeUtxos).toHaveLength(1)
+      expect(result!.runeUtxos[0].txid).toBe('canonical_rune_txid')
+      expect(result!.satUtxo.txid).toBe('sat_txid')
+    })
   })
 })

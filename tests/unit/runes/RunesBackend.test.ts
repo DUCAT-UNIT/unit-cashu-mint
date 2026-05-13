@@ -548,6 +548,44 @@ describe('RunesBackend', () => {
       expect(mockUtxoManager.addUtxo).toHaveBeenCalled() // excess runes returned
     })
 
+    it('should sign each rune input with its matching account index', async () => {
+      const mockRuneUtxos = [
+        {
+          txid: 'quote_rune_txid',
+          vout: 1,
+          value: 10000,
+          runeAmount: 700n,
+          runeId: { block: 1527352n, tx: 1n },
+          accountIndex: 4242,
+        },
+        {
+          txid: 'canonical_rune_txid',
+          vout: 0,
+          value: 10000,
+          runeAmount: 300n,
+          runeId: { block: 1527352n, tx: 1n },
+          accountIndex: 0,
+        },
+      ]
+      const mockPsbt = { marker: 'psbt' }
+
+      mockUtxoSelector.findUtxosForRunesTransfer.mockResolvedValue({
+        runeUtxos: mockRuneUtxos,
+        satUtxo: { txid: 'sat_txid', vout: 0, value: 50000 },
+      })
+
+      mockPsbtBuilder.buildRunesPsbt.mockResolvedValue({ psbt: mockPsbt, fee: 1000 })
+      mockWalletKeyManager.signAndExtract.mockReturnValue({
+        signedTxHex: 'signed_tx_hex',
+        txid: 'broadcast_txid',
+      })
+      mockEsploraClient.broadcastTransaction.mockResolvedValue('broadcast_txid')
+
+      await runesBackend.sendRunes(destination, amount, runeId)
+
+      expect(mockWalletKeyManager.signAndExtract).toHaveBeenCalledWith(mockPsbt, [4242, 0])
+    })
+
     it('should throw when no UTXOs found', async () => {
       mockUtxoSelector.findUtxosForRunesTransfer.mockResolvedValue(null)
 
