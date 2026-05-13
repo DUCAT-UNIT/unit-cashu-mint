@@ -38,6 +38,16 @@ vi.mock('../../../src/runes/WalletKeyManager.js', () => ({
         segwitAddress: 'tb1qtest123',
         taprootPubkey: '02' + '0'.repeat(62),
       }),
+      deriveQuoteTaprootAddress: vi.fn((quoteId: string) => ({
+        address: `tb1pquote${quoteId}`,
+        accountIndex: 12345,
+        internalPubkey: '11'.repeat(32),
+      })),
+      deriveTaprootAddress: vi.fn((accountIndex: number) => ({
+        address: `tb1paccount${accountIndex}`,
+        accountIndex,
+        internalPubkey: '11'.repeat(32),
+      })),
       signAndExtract: vi.fn(),
     }
   }),
@@ -116,7 +126,8 @@ describe('RunesBackend', () => {
 
   describe('checkDeposit', () => {
     const quoteId = 'test-quote-123'
-    const depositAddress = 'tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em'
+    const depositAddress = `tb1pquote${quoteId}`
+    const canonicalAddress = 'tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em'
 
     it('should detect a new deposit with correct amount', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
@@ -334,6 +345,15 @@ describe('RunesBackend', () => {
       )
     })
 
+    it('should not auto-claim amountless deposits sent to the canonical shared address', async () => {
+      mockOrdClient.getAddressOutputs.mockRejectedValue(new Error('should not scan shared address'))
+
+      const result = await runesBackend.checkDeposit(quoteId, canonicalAddress)
+
+      expect(result).toEqual({ confirmed: false, confirmations: 0 })
+      expect(mockOrdClient.getAddressOutputs).not.toHaveBeenCalled()
+    })
+
     it('should skip UTXO when getOutput returns no runes field', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: ['txid_no_runes:0', 'txid_with_runes:1'],
@@ -432,11 +452,19 @@ describe('RunesBackend', () => {
   })
 
   describe('createDepositAddress', () => {
-    it('should return the mint taproot address', async () => {
+    it('should return the quote-derived taproot address', async () => {
       const address = await runesBackend.createDepositAddress('quote123', 1000n, '1527352:1')
 
-      // Should return the mint's taproot address
-      expect(address).toBe('tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em')
+      expect(address).toBe('tb1pquotequote123')
+    })
+
+    it('should return different deposit addresses for different quotes', async () => {
+      const first = await runesBackend.createDepositAddress('quote-a', 0n, '1527352:1')
+      const second = await runesBackend.createDepositAddress('quote-b', 0n, '1527352:1')
+
+      expect(first).toBe('tb1pquotequote-a')
+      expect(second).toBe('tb1pquotequote-b')
+      expect(first).not.toBe(second)
     })
   })
 

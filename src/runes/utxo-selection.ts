@@ -1,6 +1,7 @@
 import { OrdClient, EsploraClient } from './api-client.js'
 import { RuneUtxo, SatUtxo, RUNES_TX_CONSTANTS, RuneId } from './types.js'
 import { logger } from '../utils/logger.js'
+import type { MintUtxoRecord } from './UtxoManager.js'
 
 export class UtxoSelector {
   constructor(
@@ -97,6 +98,74 @@ export class UtxoSelector {
     }
   }
 
+  async findTrackedRuneUtxos(
+    trackedUtxos: MintUtxoRecord[],
+    requiredAmount: bigint,
+    runeName: string,
+    runeId: RuneId,
+    spentUtxos: Set<string> = new Set(),
+    taprootInternalPubkeyForAccount?: (accountIndex: number) => string
+  ): Promise<RuneUtxo[] | null> {
+    const runeUtxos: RuneUtxo[] = []
+    let totalAmount = 0n
+
+    for (const record of trackedUtxos) {
+      const utxoKey = `${record.txid}:${record.vout}`
+      if (spentUtxos.has(utxoKey) || record.spent) {
+        continue
+      }
+
+      const outspend = await this.esploraClient.getOutspend(record.txid, record.vout)
+      if (outspend.spent) {
+        continue
+      }
+
+      const outputData = await this.ordClient.getOutput(record.txid, record.vout)
+      const runeData = outputData.runes?.[runeName]
+      if (!runeData) {
+        continue
+      }
+
+      const accountIndex = record.account_index ?? 0
+      const runeAmount = BigInt(runeData.amount)
+      runeUtxos.push({
+        txid: record.txid,
+        vout: record.vout,
+        value: outputData.value ?? record.value,
+        address: record.address,
+        runeAmount,
+        runeName,
+        runeId,
+        accountIndex,
+        taprootInternalPubkey: taprootInternalPubkeyForAccount?.(accountIndex),
+      })
+
+      totalAmount += runeAmount
+      if (totalAmount >= requiredAmount) {
+        logger.info(
+          {
+            utxoCount: runeUtxos.length,
+            totalAmount: totalAmount.toString(),
+            requiredAmount: requiredAmount.toString(),
+          },
+          'Found sufficient tracked rune UTXOs'
+        )
+        return runeUtxos
+      }
+    }
+
+    logger.warn(
+      {
+        requiredAmount: requiredAmount.toString(),
+        totalFound: totalAmount.toString(),
+        trackedCount: trackedUtxos.length,
+        runeName,
+      },
+      'Insufficient tracked rune UTXOs found'
+    )
+    return null
+  }
+
   /**
    * Find a sat UTXO for paying fees
    * @param address The segwit address to search for fee UTXOs
@@ -154,15 +223,27 @@ export class UtxoSelector {
     requiredRunes: bigint,
     runeName: string,
     runeId: RuneId,
-    spentUtxos: Set<string> = new Set()
+    spentUtxos: Set<string> = new Set(),
+    trackedUtxos: MintUtxoRecord[] = [],
+    taprootInternalPubkeyForAccount?: (accountIndex: number) => string
   ): Promise<{ runeUtxos: RuneUtxo[]; satUtxo: SatUtxo } | null> {
-    const runeUtxos = await this.findRuneUtxos(
-      taprootAddress,
-      requiredRunes,
-      runeName,
-      runeId,
-      spentUtxos
-    )
+    const runeUtxos =
+      trackedUtxos.length > 0
+        ? await this.findTrackedRuneUtxos(
+            trackedUtxos,
+            requiredRunes,
+            runeName,
+            runeId,
+            spentUtxos,
+            taprootInternalPubkeyForAccount
+          )
+        : await this.findRuneUtxos(
+            taprootAddress,
+            requiredRunes,
+            runeName,
+            runeId,
+            spentUtxos
+          )
 
     if (!runeUtxos) {
       return null

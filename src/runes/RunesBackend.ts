@@ -80,18 +80,30 @@ export class RunesBackend implements IPaymentBackend {
 
   /**
    * Create a deposit address for a mint quote
-   * For now, we use the mint's taproot address directly
-   * In production, could use unique addresses per quote
+   * UNIT deposits use quote-derived Taproot addresses so amountless quotes can
+   * safely derive their amount from the deposited rune output.
    */
   async createDepositAddress(
     quoteId: string,
     amount: bigint
   ): Promise<string> {
-    logger.info({ quoteId, amount: amount.toString(), runeId: this.runeId }, 'Creating deposit address')
+    const quoteAddress = this.walletKeyManager.deriveQuoteTaprootAddress(quoteId)
+    logger.info(
+      {
+        quoteId,
+        amount: amount.toString(),
+        runeId: this.runeId,
+        depositAddress: quoteAddress.address,
+        accountIndex: quoteAddress.accountIndex,
+      },
+      'Creating deposit address'
+    )
 
-    // For simplicity, we use the mint's main taproot address
-    // In production, you might want to derive unique addresses per quote
-    return this.taprootAddress
+    return quoteAddress.address
+  }
+
+  isCanonicalDepositAddress(address: string): boolean {
+    return address === this.taprootAddress
   }
 
   /**
@@ -109,6 +121,17 @@ export class RunesBackend implements IPaymentBackend {
   ): Promise<DepositStatus> {
     try {
       logger.info({ quoteId, depositAddress, expectedAmount: expectedAmount?.toString() }, 'Checking deposit status')
+
+      if (expectedAmount === undefined && this.isCanonicalDepositAddress(depositAddress)) {
+        logger.warn(
+          { quoteId, depositAddress },
+          'Skipping amountless shared-address UNIT deposit check'
+        )
+        return {
+          confirmed: false,
+          confirmations: 0,
+        }
+      }
 
       // Check if we've already recorded this deposit in the database
       const existingDeposit = await this.utxoManager.getUnspentUtxos(this.runeId)
@@ -182,6 +205,7 @@ export class RunesBackend implements IPaymentBackend {
               : 0
 
             if (confirmations >= env.MINT_CONFIRMATIONS) {
+              await this.trackDepositUtxo(quoteId, depositAddress, txid, vout, utxoDetails, amount)
               logger.info(
                 { quoteId, txid, vout, amount: amount.toString(), confirmations },
                 'Deposit detected (exact amount match)'
@@ -252,6 +276,10 @@ export class RunesBackend implements IPaymentBackend {
         logger.debug({ txid, vout, confirmations, isAlreadyTracked }, 'Found UTXO with DUCAT•UNIT•RUNE')
 
         const amount = BigInt(unitRune.amount)
+
+        if (confirmations >= env.MINT_CONFIRMATIONS) {
+          await this.trackDepositUtxo(quoteId, depositAddress, txid, vout, utxoDetails, amount)
+        }
 
         logger.info(
           {
@@ -338,6 +366,18 @@ export class RunesBackend implements IPaymentBackend {
 
       const amount = BigInt(unitRune.amount)
 
+      if (confirmations >= env.MINT_CONFIRMATIONS) {
+        const outputAddress = tx.vout?.[vout]?.scriptpubkey_address
+        await this.trackDepositUtxo(
+          quoteId,
+          outputAddress ?? this.taprootAddress,
+          txid,
+          vout,
+          utxoDetails,
+          amount
+        )
+      }
+
       logger.info(
         { quoteId, txid, vout, amount: amount.toString(), confirmations, required: env.MINT_CONFIRMATIONS },
         'Specific deposit verified'
@@ -366,6 +406,50 @@ export class RunesBackend implements IPaymentBackend {
       )
       throw error
     }
+  }
+
+  private accountIndexForDeposit(quoteId: string, depositAddress: string): number {
+    const quoteAddress = this.walletKeyManager.deriveQuoteTaprootAddress(quoteId)
+    if (depositAddress === quoteAddress.address) {
+      return quoteAddress.accountIndex
+    }
+
+    return 0
+  }
+
+  private taprootInternalPubkeyForAccount(accountIndex: number): string {
+    if (accountIndex === 0) {
+      return this.taprootPubkey
+    }
+
+    return this.walletKeyManager.deriveTaprootAddress(accountIndex).internalPubkey
+  }
+
+  private async trackDepositUtxo(
+    quoteId: string,
+    depositAddress: string,
+    txid: string,
+    vout: number,
+    outputData: { value: number },
+    amount: bigint
+  ): Promise<void> {
+    const [blockStr, txStr] = this.runeId.split(':')
+    await this.utxoManager.addUtxo({
+      txid,
+      vout,
+      value: outputData.value,
+      address: depositAddress,
+      runeAmount: amount,
+      runeName: this.runeName,
+      runeId: {
+        block: BigInt(blockStr),
+        tx: BigInt(txStr),
+      },
+      accountIndex: this.accountIndexForDeposit(quoteId, depositAddress),
+      taprootInternalPubkey: this.taprootInternalPubkeyForAccount(
+        this.accountIndexForDeposit(quoteId, depositAddress)
+      ),
+    })
   }
 
   /**
@@ -415,6 +499,7 @@ export class RunesBackend implements IPaymentBackend {
 
       // Get spent UTXOs to exclude
       const spentUtxos = await this.utxoManager.getSpentUtxoKeys()
+      const trackedRuneUtxos = await this.utxoManager.getUnspentUtxos(this.runeId)
 
       // Find UTXOs
       const utxos = await this.utxoSelector.findUtxosForRunesTransfer(
@@ -423,7 +508,9 @@ export class RunesBackend implements IPaymentBackend {
         amount,
         this.runeName,
         parsedRuneId,
-        spentUtxos
+        spentUtxos,
+        trackedRuneUtxos,
+        (accountIndex) => this.taprootInternalPubkeyForAccount(accountIndex)
       )
 
       if (!utxos) {
@@ -442,7 +529,11 @@ export class RunesBackend implements IPaymentBackend {
       )
 
       // Sign the PSBT
-      const { signedTxHex, txid } = this.walletKeyManager.signAndExtract(psbt)
+      const runeInputAccountIndexes = utxos.runeUtxos.map((utxo) => utxo.accountIndex ?? 0)
+      const { signedTxHex, txid } = this.walletKeyManager.signAndExtract(
+        psbt,
+        runeInputAccountIndexes
+      )
 
       // Broadcast transaction
       const broadcastedTxid = await this.esploraClient.broadcastTransaction(signedTxHex)
@@ -478,6 +569,8 @@ export class RunesBackend implements IPaymentBackend {
           runeAmount: excessRunes,
           runeName: this.runeName,
           runeId: parsedRuneId,
+          accountIndex: 0,
+          taprootInternalPubkey: this.taprootPubkey,
         }
 
         await this.utxoManager.addUtxo(returnUtxo)
@@ -593,6 +686,8 @@ export class RunesBackend implements IPaymentBackend {
             runeAmount: BigInt(runeData.amount),
             runeName: this.runeName,
             runeId,
+            accountIndex: 0,
+            taprootInternalPubkey: this.taprootPubkey,
           })
         }
       }

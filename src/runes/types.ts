@@ -18,6 +18,8 @@ export interface RuneUtxo {
   runeName: string
   runeId: RuneId
   confirmations?: number
+  accountIndex?: number
+  taprootInternalPubkey?: string
 }
 
 export interface SatUtxo {

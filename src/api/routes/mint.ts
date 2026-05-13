@@ -48,7 +48,7 @@ export const mintRoutes: FastifyPluginAsync = async (fastify) => {
           return reply.code(400).send({ error: `Unsupported method/unit: onchain/${unit}` })
         }
 
-        const quote = await mintService.createOnchainMintQuote(unit, pubkey, rune_id)
+        const quote = await mintService.createOnchainMintQuote(unit, pubkey, rune_id, amount)
         return reply.code(200).send(quote)
       }
 

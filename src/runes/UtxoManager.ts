@@ -12,6 +12,7 @@ export interface MintUtxoRecord {
   spent: boolean
   spent_in_txid?: string
   created_at: number
+  account_index: number
 }
 
 /**
@@ -28,8 +29,10 @@ export class UtxoManager {
 
     await this.db.query(
       `
-      INSERT INTO mint_utxos (txid, vout, rune_id, amount, address, value, spent, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO mint_utxos (
+        txid, vout, rune_id, amount, address, value, spent, created_at, account_index
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (txid, vout) DO NOTHING
     `,
       [
@@ -41,11 +44,17 @@ export class UtxoManager {
         utxo.value,
         false,
         Date.now(),
+        utxo.accountIndex ?? 0,
       ]
     )
 
     logger.info(
-      { txid: utxo.txid, vout: utxo.vout, runeAmount: utxo.runeAmount.toString() },
+      {
+        txid: utxo.txid,
+        vout: utxo.vout,
+        runeAmount: utxo.runeAmount.toString(),
+        accountIndex: utxo.accountIndex ?? 0,
+      },
       'Added UTXO to mint reserves'
     )
   }
@@ -141,8 +150,10 @@ export class UtxoManager {
         // Try to insert, if already exists it will be ignored
         const result = await this.db.query(
           `
-          INSERT INTO mint_utxos (txid, vout, rune_id, amount, address, value, spent, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO mint_utxos (
+            txid, vout, rune_id, amount, address, value, spent, created_at, account_index
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (txid, vout) DO NOTHING
           RETURNING txid
         `,
@@ -155,6 +166,7 @@ export class UtxoManager {
             utxo.value,
             false,
             Date.now(),
+            utxo.accountIndex ?? 0,
           ]
         )
 

@@ -118,7 +118,7 @@ describe('MintService', () => {
           }) as any
       )
 
-      const result = await service.createOnchainMintQuote('unit', pubkey)
+      const result = await service.createOnchainMintQuote('unit', pubkey, undefined, 15000)
 
       expect(onchainBackend.createDepositAddress).toHaveBeenCalledWith(expect.any(String), 0n)
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
@@ -157,10 +157,38 @@ describe('MintService', () => {
           }) as any
       )
 
-      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3')
+      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3', 100)
 
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
         expect.objectContaining({
+          amount: 0,
+          unit: 'unit',
+          rune_id: '840000:3',
+          method: 'onchain',
+        })
+      )
+    })
+
+    it('keeps amount optional for UNIT onchain quote compatibility', async () => {
+      const onchainBackend = createMockBackend('unit', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(onchainBackend, [], ['unit'])
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
+
+      vi.mocked(mockQuoteRepo.createMintQuote).mockImplementation(
+        async (quote) =>
+          ({
+            ...quote,
+            created_at: Date.now(),
+          }) as any
+      )
+
+      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3')
+
+      expect(onchainBackend.createDepositAddress).toHaveBeenCalledWith(expect.any(String), 0n)
+      expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 0,
           unit: 'unit',
           rune_id: '840000:3',
           method: 'onchain',
@@ -265,6 +293,64 @@ describe('MintService', () => {
         'Mint quote requires a valid signature'
       )
       expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
+    })
+
+    it('claims an amountless UNIT onchain quote by exact deposited rune amount at mint time', async () => {
+      const onchainBackend = createMockBackend('unit', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(onchainBackend, [], ['unit'])
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
+      const amountlessQuote = createMintQuote({
+        id: quoteId,
+        amount: 0,
+        method: 'onchain',
+        state: 'UNPAID',
+        pubkey: undefined,
+      })
+
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(amountlessQuote)
+      vi.mocked(onchainBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        confirmations: 6,
+      })
+      vi.mocked(mockQuoteRepo.withMintQuoteLock).mockImplementationOnce(async (_id, callback) =>
+        callback(
+          createMintQuote({
+            ...amountlessQuote,
+            amount: 500,
+            amount_paid: 500,
+            state: 'PAID',
+          }),
+          undefined as any
+        )
+      )
+      vi.mocked(mockMintCrypto.signBlindedMessages).mockResolvedValue([
+        { id: 'keyset123', amount: 500, C_: '02abc' },
+      ])
+
+      const outputs = [{ id: 'keyset123', amount: 500, B_: '02xyz' }]
+      const result = await service.mintTokens(quoteId, outputs)
+
+      expect(result.signatures).toHaveLength(1)
+      expect(onchainBackend.checkDeposit).toHaveBeenCalledWith(
+        quoteId,
+        'tb1ptest123',
+        true,
+        500n
+      )
+      expect(mockQuoteRepo.claimMintDeposit).toHaveBeenCalledWith({
+        quoteId,
+        method: 'onchain',
+        unit: 'unit',
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        creditMode: 'increment-paid',
+      })
+      expect(mockMintCrypto.signBlindedMessages).toHaveBeenCalledWith(outputs)
     })
 
     it('should mint tokens when deposit amount matches quote amount', async () => {

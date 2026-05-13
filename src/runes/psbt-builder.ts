@@ -94,7 +94,8 @@ export class RunesPsbtBuilder {
         },
       })
 
-      // Inputs 1...N: Taproot rune-bearing UTXOs
+      // Inputs 1...N: Taproot rune-bearing UTXOs. Quote-derived deposits can
+      // have distinct internal pubkeys, so each input carries its own fallback.
       for (const runeUtxo of runeUtxos) {
         const runeTxHex = await this.esploraClient.getTransactionHex(runeUtxo.txid)
         const runeTx = bitcoin.Transaction.fromHex(runeTxHex)
@@ -106,7 +107,7 @@ export class RunesPsbtBuilder {
             script: runeTx.outs[runeUtxo.vout].script,
             value: runeUtxo.value,
           },
-          tapInternalKey: Buffer.from(taprootInternalPubkey, 'hex'),
+          tapInternalKey: Buffer.from(runeUtxo.taprootInternalPubkey ?? taprootInternalPubkey, 'hex'),
         })
       }
 

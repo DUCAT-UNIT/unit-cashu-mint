@@ -109,20 +109,25 @@ export class MintService {
   async createOnchainMintQuote(
     unit: string,
     pubkey: string,
-    runeId?: string
+    runeId?: string,
+    amount: number = 0
   ): Promise<OnchainMintQuoteResponse> {
     this.validatePubkey(pubkey)
+    if (!Number.isInteger(amount) || amount < 0) {
+      throw new MintError('Onchain mint quote amount must be a non-negative integer', 20010)
+    }
     const effectiveRuneId = this.defaultRuneIdForUnit(unit, runeId)
     await this.ensureKeyset(effectiveRuneId, unit)
 
     const quoteId = randomBytes(32).toString('hex')
     const backend = this.backendRegistry.getByMethod('onchain', unit)
-    const depositAddress = await backend.createDepositAddress(quoteId, 0n)
+    const quoteAmount = unit === 'unit' ? 0 : amount
+    const depositAddress = await backend.createDepositAddress(quoteId, BigInt(quoteAmount))
     const expiry = Math.floor(Date.now() / 1000) + 24 * 60 * 60
 
     const quote = await this.quoteRepo.createMintQuote({
       id: quoteId,
-      amount: 0,
+      amount: quoteAmount,
       unit,
       rune_id: effectiveRuneId,
       method: 'onchain',
@@ -134,7 +139,7 @@ export class MintService {
       amount_issued: 0,
     })
 
-    logger.info({ quoteId, unit, depositAddress }, 'Onchain mint quote created')
+    logger.info({ quoteId, amount: quoteAmount, requestedAmount: amount, unit, depositAddress }, 'Onchain mint quote created')
 
     return this.toOnchainMintQuoteResponse(quote)
   }
@@ -383,15 +388,61 @@ export class MintService {
     quoteId: string,
     outputs: BlindedMessage[]
   ): Promise<{ signatures: BlindSignature[] }> {
-    await this.getOnchainMintQuote(quoteId)
+    const preflightQuote = await this.quoteRepo.findMintQuoteByIdOrThrow(quoteId)
     const totalOutput = outputs.reduce((sum, o) => sum + o.amount, 0)
 
     if (totalOutput <= 0) {
       throw new AmountMismatchError(1, totalOutput)
     }
 
+    if (preflightQuote.unit === 'unit' && preflightQuote.amount <= 0) {
+      const backend = this.backendRegistry.getByMethod(preflightQuote.method, preflightQuote.unit)
+      if (this.isAmbiguousSharedUnitQuote(preflightQuote, backend)) {
+        throw new MintError('Amountless shared-address UNIT mint quote is ambiguous', 20011)
+      }
+
+      const depositStatus = await backend.checkDeposit(
+        quoteId,
+        preflightQuote.request,
+        true,
+        BigInt(totalOutput)
+      )
+
+      if (
+        !depositStatus.confirmed ||
+        depositStatus.amount === undefined ||
+        depositStatus.txid === undefined ||
+        depositStatus.vout === undefined
+      ) {
+        throw new Error('Deposit not found on-chain for requested mint amount')
+      }
+
+      if (depositStatus.amount !== BigInt(totalOutput)) {
+        throw new AmountMismatchError(totalOutput, Number(depositStatus.amount))
+      }
+
+      const claimed = await this.claimDepositForQuote(
+        preflightQuote,
+        depositStatus,
+        depositStatus.amount
+      )
+      if (!claimed) {
+        logger.error(
+          { quoteId, txid: depositStatus.txid, vout: depositStatus.vout },
+          'SECURITY: Deposit already claimed by another quote - refusing to mint'
+        )
+        throw new Error('Deposit already claimed by another quote')
+      }
+    } else {
+      await this.getOnchainMintQuote(quoteId)
+    }
+
     return this.quoteRepo.withMintQuoteLock(quoteId, async (quote, client) => {
       const availableAmount = quote.amount_paid - quote.amount_issued
+
+      if (quote.amount > 0 && totalOutput !== quote.amount) {
+        throw new AmountMismatchError(quote.amount, totalOutput)
+      }
 
       if (totalOutput > availableAmount) {
         throw new AmountMismatchError(availableAmount, totalOutput)
@@ -416,7 +467,18 @@ export class MintService {
     const backend = this.backendRegistry.getByMethod(quote.method, quote.unit)
 
     try {
-      const depositStatus = await backend.checkDeposit(quoteId, quote.request, true)
+      if (this.isAmbiguousSharedUnitQuote(quote, backend)) {
+        logger.warn({ quoteId }, 'Skipping ambiguous shared-address UNIT quote without amount')
+        return this.toOnchainMintQuoteResponse(quote)
+      }
+
+      const expectedAmount = quote.amount > 0 ? BigInt(quote.amount) : undefined
+      const depositStatus = await backend.checkDeposit(
+        quoteId,
+        quote.request,
+        true,
+        expectedAmount
+      )
       if (depositStatus.confirmed && depositStatus.amount !== undefined) {
         if (depositStatus.txid && depositStatus.vout !== undefined) {
           const claimed = await this.claimDepositForQuote(
@@ -451,6 +513,20 @@ export class MintService {
     }
 
     return this.toOnchainMintQuoteResponse(quote)
+  }
+
+  private isAmbiguousSharedUnitQuote(
+    quote: { unit: string; amount: number; request: string },
+    backend: unknown
+  ): boolean {
+    return (
+      quote.unit === 'unit' &&
+      quote.amount <= 0 &&
+      typeof (backend as { isCanonicalDepositAddress?: unknown }).isCanonicalDepositAddress ===
+        'function' &&
+      (backend as { isCanonicalDepositAddress: (address: string) => boolean })
+        .isCanonicalDepositAddress(quote.request)
+    )
   }
 
   private toOnchainMintQuoteResponse(quote: {

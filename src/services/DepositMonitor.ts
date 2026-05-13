@@ -125,7 +125,7 @@ export class DepositMonitor {
             quote.id,
             quote.request,
             false,
-            quote.method === 'onchain' ? undefined : BigInt(quote.amount)
+            quote.amount > 0 ? BigInt(quote.amount) : undefined
           )
 
           if (depositStatus.confirmed) {

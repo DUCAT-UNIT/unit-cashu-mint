@@ -1,6 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib'
 import { BIP32Factory, BIP32Interface } from 'bip32'
 import * as ecc from '@bitcoinerlab/secp256k1'
+import { createHash } from 'crypto'
 import { logger } from '../utils/logger.js'
 import { env } from '../config/env.js'
 
@@ -49,6 +50,12 @@ export interface MintAddresses {
   taprootPubkey: string
 }
 
+export interface DerivedTaprootAddress {
+  address: string
+  accountIndex: number
+  internalPubkey: string
+}
+
 /**
  * Wallet Key Manager for the Mint
  * Handles key derivation, address generation, and PSBT signing
@@ -68,13 +75,7 @@ export class WalletKeyManager {
    * This should be called once during mint initialization
    */
   deriveAddresses(): MintAddresses {
-    const seed = Buffer.from(env.MINT_SEED, 'hex')
-
-    if (seed.length !== 32) {
-      throw new Error('MINT_SEED must be 32 bytes (64 hex characters)')
-    }
-
-    const root = bip32.fromSeed(seed, this.network)
+    const root = this.rootFromSeed()
 
     // BIP84 - Native SegWit (for fee payments)
     const segwitPath = `m/84'/1'/0'/0/${this.accountIndex}`
@@ -114,17 +115,50 @@ export class WalletKeyManager {
     }
   }
 
+  deriveQuoteTaprootAddress(quoteId: string): DerivedTaprootAddress {
+    return this.deriveTaprootAddress(this.quoteAccountIndex(quoteId))
+  }
+
+  deriveTaprootAddress(accountIndex: number = this.accountIndex): DerivedTaprootAddress {
+    const root = this.rootFromSeed()
+    const taprootChild = root.derivePath(`m/86'/1'/0'/0/${accountIndex}`)
+    const xOnlyPubkey = Buffer.from(taprootChild.publicKey.slice(1, 33))
+    const taprootPayment = bitcoin.payments.p2tr({
+      internalPubkey: xOnlyPubkey,
+      network: this.network,
+    })
+
+    if (!taprootPayment.address) {
+      throw new Error('Failed to derive Taproot address')
+    }
+
+    return {
+      address: taprootPayment.address,
+      accountIndex,
+      internalPubkey: xOnlyPubkey.toString('hex'),
+    }
+  }
+
+  quoteAccountIndex(quoteId: string): number {
+    if (!quoteId) {
+      return 0
+    }
+
+    const maxNonHardenedIndex = 0x7fffffff
+    const digest = createHash('sha256').update(quoteId).digest()
+    return (digest.readUInt32BE(0) % maxNonHardenedIndex) + 1
+  }
+
   /**
    * Derive signing keys from MINT_SEED
    * SECURITY: Seed is only in memory for the duration of this function
    */
-  private deriveSigningKeys(): DerivedKeys {
-    const seed = Buffer.from(env.MINT_SEED, 'hex')
-    const root = bip32.fromSeed(seed, this.network)
+  private deriveSigningKeys(accountIndex: number = this.accountIndex): DerivedKeys {
+    const root = this.rootFromSeed()
 
     // Derive all keys we need
     const segwitChild = root.derivePath(`m/84'/1'/0'/0/${this.accountIndex}`)
-    const taprootChild = root.derivePath(`m/86'/1'/0'/0/${this.accountIndex}`)
+    const taprootChild = root.derivePath(`m/86'/1'/0'/0/${accountIndex}`)
 
     // Note: seed and root are destroyed when this function returns
     return {
@@ -138,10 +172,10 @@ export class WalletKeyManager {
    * @param psbt - The PSBT to sign
    * @returns Signed PSBT
    */
-  signRunesPsbt(psbt: bitcoin.Psbt): bitcoin.Psbt {
+  signRunesPsbt(psbt: bitcoin.Psbt, runeInputAccountIndexes: number[] = []): bitcoin.Psbt {
     try {
       // Derive signing keys
-      const { segwitChild, taprootChild } = this.deriveSigningKeys()
+      const { segwitChild } = this.deriveSigningKeys()
 
       // RUNES transactions have mixed input types:
       // - Input 0: P2WPKH (fee input from SegWit balance)
@@ -159,29 +193,28 @@ export class WalletKeyManager {
       // Sign Input 0 with SegWit key
       psbt.signInput(0, segwitSigner)
 
-      // Sign all Taproot inputs (1 through N) with tweaked Taproot key
-      // SECURITY: Use bitcoinjs-lib's built-in tweak method
-      const tweakedSigner = taprootChild.tweak(
-        bitcoin.crypto.taggedHash('TapTweak', Buffer.from(taprootChild.publicKey.slice(1, 33)))
-      )
-
-      // Create a wrapper for tweakedSigner that converts Uint8Array to Buffer
-      // For Taproot, we need to implement signSchnorr
-      const taprootSigner: bitcoin.Signer = {
-        publicKey: Buffer.from(tweakedSigner.publicKey),
-        sign: (hash: Buffer) => {
-          const sig = tweakedSigner.sign(hash)
-          return Buffer.from(sig)
-        },
-        signSchnorr: (hash: Buffer) => {
-          const sig = tweakedSigner.signSchnorr(hash)
-          return Buffer.from(sig)
-        },
-      }
-
-      // Sign all taproot inputs (inputs 1 through N)
+      // Sign all taproot inputs (inputs 1 through N). Each rune input may come
+      // from a different quote-derived Taproot address, so derive per input.
       const inputCount = psbt.data.inputs.length
       for (let i = 1; i < inputCount; i++) {
+        const accountIndex = runeInputAccountIndexes[i - 1] ?? this.accountIndex
+        const { taprootChild } = this.deriveSigningKeys(accountIndex)
+        const tweakedSigner = taprootChild.tweak(
+          bitcoin.crypto.taggedHash('TapTweak', Buffer.from(taprootChild.publicKey.slice(1, 33)))
+        )
+
+        const taprootSigner: bitcoin.Signer = {
+          publicKey: Buffer.from(tweakedSigner.publicKey),
+          sign: (hash: Buffer) => {
+            const sig = tweakedSigner.sign(hash)
+            return Buffer.from(sig)
+          },
+          signSchnorr: (hash: Buffer) => {
+            const sig = tweakedSigner.signSchnorr(hash)
+            return Buffer.from(sig)
+          },
+        }
+
         psbt.signInput(i, taprootSigner)
       }
 
@@ -209,8 +242,11 @@ export class WalletKeyManager {
    * @param psbt - The PSBT to sign
    * @returns Object with signed transaction hex and txid
    */
-  signAndExtract(psbt: bitcoin.Psbt): { signedTxHex: string; txid: string } {
-    const signedPsbt = this.signRunesPsbt(psbt)
+  signAndExtract(
+    psbt: bitcoin.Psbt,
+    runeInputAccountIndexes: number[] = []
+  ): { signedTxHex: string; txid: string } {
+    const signedPsbt = this.signRunesPsbt(psbt, runeInputAccountIndexes)
 
     // Extract signed transaction
     const signedTx = signedPsbt.extractTransaction()
@@ -245,5 +281,15 @@ export class WalletKeyManager {
    */
   getNetwork(): bitcoin.Network {
     return this.network
+  }
+
+  private rootFromSeed(): BIP32Interface {
+    const seed = Buffer.from(env.MINT_SEED, 'hex')
+
+    if (seed.length !== 32) {
+      throw new Error('MINT_SEED must be 32 bytes (64 hex characters)')
+    }
+
+    return bip32.fromSeed(seed, this.network)
   }
 }

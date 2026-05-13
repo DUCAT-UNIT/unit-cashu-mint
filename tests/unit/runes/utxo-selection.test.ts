@@ -394,6 +394,78 @@ describe('UtxoSelector', () => {
     })
   })
 
+  describe('findTrackedRuneUtxos', () => {
+    it('selects confirmed tracked reserves and keeps their account metadata', async () => {
+      const trackedUtxos = [
+        {
+          txid: 'tracked_quote_txid',
+          vout: 1,
+          rune_id: '1527352:1',
+          amount: '50',
+          address: 'tb1pquoteaddress',
+          value: 10000,
+          spent: false,
+          created_at: Date.now(),
+          account_index: 4242,
+        },
+      ]
+
+      vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
+      vi.mocked(mockOrdClient.getOutput).mockResolvedValue({
+        transaction: 'tracked_quote_txid',
+        value: 10000,
+        runes: { [DUCAT_RUNE_NAME]: { amount: '46776', id: '1527352:1' } },
+      })
+
+      const result = await utxoSelector.findTrackedRuneUtxos(
+        trackedUtxos,
+        46776n,
+        DUCAT_RUNE_NAME,
+        DUCAT_RUNE_ID,
+        new Set(),
+        (accountIndex) => `pubkey-${accountIndex}`
+      )
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          txid: 'tracked_quote_txid',
+          vout: 1,
+          runeAmount: 46776n,
+          accountIndex: 4242,
+          taprootInternalPubkey: 'pubkey-4242',
+        }),
+      ])
+    })
+
+    it('skips tracked reserves that are already spent on-chain', async () => {
+      const trackedUtxos = [
+        {
+          txid: 'spent_txid',
+          vout: 0,
+          rune_id: '1527352:1',
+          amount: '46776',
+          address: 'tb1pquoteaddress',
+          value: 10000,
+          spent: false,
+          created_at: Date.now(),
+          account_index: 4242,
+        },
+      ]
+
+      vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: true })
+
+      const result = await utxoSelector.findTrackedRuneUtxos(
+        trackedUtxos,
+        46776n,
+        DUCAT_RUNE_NAME,
+        DUCAT_RUNE_ID
+      )
+
+      expect(result).toBeNull()
+      expect(mockOrdClient.getOutput).not.toHaveBeenCalled()
+    })
+  })
+
   describe('findUtxosForRunesTransfer', () => {
     it('should find both rune and sat UTXOs', async () => {
       const taprootAddress = 'tb1ptest123'

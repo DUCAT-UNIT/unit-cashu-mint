@@ -187,7 +187,8 @@ export class QuoteRepository {
         await client.query(
           `
           UPDATE mint_quotes
-          SET amount_paid = amount_paid + $1,
+          SET amount = CASE WHEN amount = 0 THEN $1 ELSE amount END,
+              amount_paid = amount_paid + $1,
               txid = COALESCE(txid, $2),
               vout = COALESCE(vout, $3),
               state = CASE WHEN amount_paid + $1 > amount_issued THEN 'PAID' ELSE state END,
@@ -200,7 +201,8 @@ export class QuoteRepository {
         await client.query(
           `
           UPDATE mint_quotes
-          SET amount_paid = GREATEST(amount_paid, $1),
+          SET amount = CASE WHEN amount = 0 THEN $1 ELSE amount END,
+              amount_paid = GREATEST(amount_paid, $1),
               state = CASE WHEN state = 'ISSUED' THEN state ELSE 'PAID' END,
               paid_at = COALESCE(paid_at, $2),
               txid = COALESCE(txid, $3),
