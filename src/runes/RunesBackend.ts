@@ -2,7 +2,7 @@ import { Pool } from 'pg'
 import { OrdClient, EsploraClient } from './api-client.js'
 import { UtxoSelector } from './utxo-selection.js'
 import { RunesPsbtBuilder } from './psbt-builder.js'
-import { UtxoManager } from './UtxoManager.js'
+import { MintUtxoRecord, UtxoManager } from './UtxoManager.js'
 import { WalletKeyManager } from './WalletKeyManager.js'
 import {
   RunesWithdrawalResult,
@@ -425,6 +425,44 @@ export class RunesBackend implements IPaymentBackend {
     return this.walletKeyManager.deriveTaprootAddress(accountIndex).internalPubkey
   }
 
+  private normalizeTrackedRuneUtxos(records: MintUtxoRecord[]): MintUtxoRecord[] {
+    return records
+      .map((record) => {
+        if ((record.account_index ?? 0) !== 0 || record.address === this.taprootAddress) {
+          return record
+        }
+
+        if (!record.quote_id) {
+          logger.warn(
+            {
+              txid: record.txid,
+              vout: record.vout,
+              address: record.address,
+            },
+            'Skipping non-canonical tracked rune UTXO without quote id'
+          )
+          return null
+        }
+
+        const accountIndex = this.walletKeyManager.quoteAccountIndex(record.quote_id)
+        logger.info(
+          {
+            txid: record.txid,
+            vout: record.vout,
+            quoteId: record.quote_id,
+            accountIndex,
+          },
+          'Recovered quote-derived account index for tracked rune UTXO'
+        )
+
+        return {
+          ...record,
+          account_index: accountIndex,
+        }
+      })
+      .filter((record): record is MintUtxoRecord => record !== null)
+  }
+
   private async trackDepositUtxo(
     quoteId: string,
     depositAddress: string,
@@ -499,7 +537,9 @@ export class RunesBackend implements IPaymentBackend {
 
       // Get spent UTXOs to exclude
       const spentUtxos = await this.utxoManager.getSpentUtxoKeys()
-      const trackedRuneUtxos = await this.utxoManager.getUnspentUtxos(this.runeId)
+      const trackedRuneUtxos = this.normalizeTrackedRuneUtxos(
+        await this.utxoManager.getUnspentUtxos(this.runeId)
+      )
 
       // Find UTXOs
       const utxos = await this.utxoSelector.findUtxosForRunesTransfer(

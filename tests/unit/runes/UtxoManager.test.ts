@@ -114,9 +114,10 @@ describe('UtxoManager', () => {
       expect(mockPool.query).toHaveBeenCalledTimes(1)
       const [query, params] = vi.mocked(mockPool.query).mock.calls[0]
 
-      expect(query).toContain('SELECT *')
-      expect(query).toContain('FROM mint_utxos')
-      expect(query).toContain('spent = false')
+      expect(query).toContain('SELECT u.*, d.quote_id')
+      expect(query).toContain('FROM mint_utxos u')
+      expect(query).toContain('LEFT JOIN mint_deposits d')
+      expect(query).toContain('u.spent = false')
       expect(params).toContain('1527352:1')
 
       expect(result).toHaveLength(2)

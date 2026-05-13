@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js'
 export interface MintUtxoRecord {
   txid: string
   vout: number
+  quote_id?: string | null
   rune_id: string
   amount: string // bigint as string
   address: string
@@ -81,10 +82,12 @@ export class UtxoManager {
   async getUnspentUtxos(runeId: string): Promise<MintUtxoRecord[]> {
     const result = await this.db.query<MintUtxoRecord>(
       `
-      SELECT *
-      FROM mint_utxos
-      WHERE rune_id = $1 AND spent = false
-      ORDER BY created_at ASC
+      SELECT u.*, d.quote_id
+      FROM mint_utxos u
+      LEFT JOIN mint_deposits d
+        ON d.txid = u.txid AND d.vout = u.vout
+      WHERE u.rune_id = $1 AND u.spent = false
+      ORDER BY u.created_at ASC
     `,
       [runeId]
     )

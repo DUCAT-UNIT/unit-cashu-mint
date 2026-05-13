@@ -281,6 +281,40 @@ describe('WalletKeyManager - PSBT Signing', () => {
     expect(signedPsbt.data.inputs[1].finalScriptWitness).toBeDefined()
   })
 
+  it('should sign quote-derived Taproot inputs with the provided account index', () => {
+    const keyManager = new WalletKeyManager()
+    const network = keyManager.getNetwork()
+    const addresses = keyManager.deriveAddresses()
+    const quoteAccountIndex = keyManager.quoteAccountIndex('quote-derived-input')
+    const quoteAddress = keyManager.deriveTaprootAddress(quoteAccountIndex)
+
+    const psbt = new bitcoin.Psbt({ network })
+    const p2wpkhScript = bitcoin.address.toOutputScript(addresses.segwitAddress, network)
+    const quoteP2trScript = bitcoin.address.toOutputScript(quoteAddress.address, network)
+
+    psbt.addInput({
+      hash: Buffer.alloc(32, 1),
+      index: 0,
+      witnessUtxo: { script: p2wpkhScript, value: 50000 },
+    })
+
+    psbt.addInput({
+      hash: Buffer.alloc(32, 2),
+      index: 0,
+      witnessUtxo: { script: quoteP2trScript, value: 10000 },
+      tapInternalKey: Buffer.from(quoteAddress.internalPubkey, 'hex'),
+    })
+
+    psbt.addOutput({ address: addresses.taprootAddress, value: 10000 })
+    psbt.addOutput({ address: addresses.segwitAddress, value: 10000 })
+    psbt.addOutput({ script: Buffer.from('6a5d0800b89c5d01d00f01', 'hex'), value: 0 })
+
+    const signedPsbt = keyManager.signRunesPsbt(psbt, [quoteAccountIndex])
+
+    expect(signedPsbt.data.inputs[0].finalScriptWitness).toBeDefined()
+    expect(signedPsbt.data.inputs[1].finalScriptWitness).toBeDefined()
+  })
+
   it('should sign and extract transaction with txid', () => {
     const keyManager = new WalletKeyManager()
     const network = keyManager.getNetwork()

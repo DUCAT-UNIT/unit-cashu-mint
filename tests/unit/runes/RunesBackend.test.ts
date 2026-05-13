@@ -48,6 +48,7 @@ vi.mock('../../../src/runes/WalletKeyManager.js', () => ({
         accountIndex,
         internalPubkey: '11'.repeat(32),
       })),
+      quoteAccountIndex: vi.fn((_quoteId: string) => 4242),
       signAndExtract: vi.fn(),
     }
   }),
@@ -498,6 +499,7 @@ describe('RunesBackend', () => {
       }
       mockWalletKeyManager = {
         signAndExtract: vi.fn(),
+        quoteAccountIndex: vi.fn((_quoteId: string) => 4242),
         deriveAddresses: vi.fn().mockReturnValue({
           taprootAddress: 'tb1p7p74tg67aaw94vz2kewzeyuq80x0a65wpgegnat98f5hkcnpfjsqntv2em',
           segwitAddress: 'tb1qtest123',
@@ -584,6 +586,62 @@ describe('RunesBackend', () => {
       await runesBackend.sendRunes(destination, amount, runeId)
 
       expect(mockWalletKeyManager.signAndExtract).toHaveBeenCalledWith(mockPsbt, [4242, 0])
+    })
+
+    it('should recover account indexes for old quote-derived rows that defaulted to zero', async () => {
+      mockUtxoManager.getUnspentUtxos.mockResolvedValue([
+        {
+          txid: 'quote_rune_txid',
+          vout: 1,
+          rune_id: '1527352:1',
+          amount: '1000',
+          address: 'tb1pquoteoldrow',
+          value: 10000,
+          spent: false,
+          created_at: Date.now(),
+          account_index: 0,
+          quote_id: 'quote-with-old-default-account',
+        },
+      ])
+      mockUtxoSelector.findUtxosForRunesTransfer.mockResolvedValue(null)
+
+      await expect(runesBackend.sendRunes(destination, amount, runeId)).rejects.toThrow(
+        'Insufficient funds'
+      )
+
+      expect(mockWalletKeyManager.quoteAccountIndex).toHaveBeenCalledWith(
+        'quote-with-old-default-account'
+      )
+      expect(mockUtxoSelector.findUtxosForRunesTransfer.mock.calls[0][6]).toEqual([
+        expect.objectContaining({
+          txid: 'quote_rune_txid',
+          account_index: 4242,
+        }),
+      ])
+    })
+
+    it('should skip old non-canonical tracked rows when the quote id is unavailable', async () => {
+      mockUtxoManager.getUnspentUtxos.mockResolvedValue([
+        {
+          txid: 'unknown_quote_rune_txid',
+          vout: 1,
+          rune_id: '1527352:1',
+          amount: '1000',
+          address: 'tb1punknownquoteaddress',
+          value: 10000,
+          spent: false,
+          created_at: Date.now(),
+          account_index: 0,
+          quote_id: null,
+        },
+      ])
+      mockUtxoSelector.findUtxosForRunesTransfer.mockResolvedValue(null)
+
+      await expect(runesBackend.sendRunes(destination, amount, runeId)).rejects.toThrow(
+        'Insufficient funds'
+      )
+
+      expect(mockUtxoSelector.findUtxosForRunesTransfer.mock.calls[0][6]).toEqual([])
     })
 
     it('should throw when no UTXOs found', async () => {
