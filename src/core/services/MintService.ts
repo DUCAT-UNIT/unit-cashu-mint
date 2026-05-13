@@ -116,6 +116,9 @@ export class MintService {
     if (!Number.isInteger(amount) || amount < 0) {
       throw new MintError('Onchain mint quote amount must be a non-negative integer', 20010)
     }
+    if (unit !== 'unit' && amount <= 0) {
+      throw new MintError('Onchain mint quote amount is required for this unit', 20010)
+    }
     const effectiveRuneId = this.defaultRuneIdForUnit(unit, runeId)
     await this.ensureKeyset(effectiveRuneId, unit)
 
@@ -442,6 +445,10 @@ export class MintService {
 
       if (quote.amount > 0 && totalOutput !== quote.amount) {
         throw new AmountMismatchError(quote.amount, totalOutput)
+      }
+
+      if (quote.unit === 'unit' && quote.amount <= 0 && totalOutput !== availableAmount) {
+        throw new AmountMismatchError(availableAmount, totalOutput)
       }
 
       if (totalOutput > availableAmount) {

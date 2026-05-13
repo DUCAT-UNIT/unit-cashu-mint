@@ -195,6 +195,20 @@ describe('MintService', () => {
         })
       )
     })
+
+    it('requires an amount for non-UNIT onchain quotes', async () => {
+      const btcBackend = createMockBackend('sat', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(btcBackend, [], ['sat'])
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
+
+      await expect(
+        service.createOnchainMintQuote('sat', '02' + '22'.repeat(32), undefined)
+      ).rejects.toThrow('Onchain mint quote amount is required for this unit')
+
+      expect(btcBackend.createDepositAddress).not.toHaveBeenCalled()
+      expect(mockQuoteRepo.createMintQuote).not.toHaveBeenCalled()
+    })
   })
 
   describe('createMintQuote', () => {
@@ -351,6 +365,51 @@ describe('MintService', () => {
         creditMode: 'increment-paid',
       })
       expect(mockMintCrypto.signBlindedMessages).toHaveBeenCalledWith(outputs)
+    })
+
+    it('rejects partial output sums for amountless UNIT onchain quotes', async () => {
+      const onchainBackend = createMockBackend('unit', 'onchain')
+      const registry = new BackendRegistry()
+      registry.register(onchainBackend, [], ['unit'])
+      const service = new MintService(mockMintCrypto, mockQuoteRepo, registry, mockKeyManager)
+      const amountlessQuote = createMintQuote({
+        id: quoteId,
+        amount: 0,
+        method: 'onchain',
+        state: 'UNPAID',
+        pubkey: undefined,
+      })
+
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(amountlessQuote)
+      vi.mocked(onchainBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        amount: 400n,
+        txid: 'deposit_txid',
+        vout: 0,
+        confirmations: 6,
+      })
+      vi.mocked(mockQuoteRepo.withMintQuoteLock).mockImplementationOnce(async (_id, callback) =>
+        callback(
+          createMintQuote({
+            ...amountlessQuote,
+            amount: 400,
+            amount_paid: 400,
+            state: 'PAID',
+          }),
+          undefined as any
+        )
+      )
+
+      const outputs = [{ id: 'keyset123', amount: 300, B_: '02xyz' }]
+
+      await expect(service.mintTokens(quoteId, outputs)).rejects.toThrow(AmountMismatchError)
+      expect(onchainBackend.checkDeposit).toHaveBeenCalledWith(
+        quoteId,
+        'tb1ptest123',
+        true,
+        300n
+      )
+      expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
     })
 
     it('should mint tokens when deposit amount matches quote amount', async () => {
