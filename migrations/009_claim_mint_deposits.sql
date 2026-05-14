@@ -16,3 +16,7 @@ CREATE TABLE IF NOT EXISTS mint_deposits (
 
 CREATE INDEX IF NOT EXISTS idx_mint_deposits_quote ON mint_deposits(quote_id);
 CREATE INDEX IF NOT EXISTS idx_mint_deposits_method_unit ON mint_deposits(method, unit);
+
+INSERT INTO migrations (id, name)
+VALUES (9, '009_claim_mint_deposits')
+ON CONFLICT (id) DO NOTHING;

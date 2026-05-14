@@ -103,13 +103,29 @@ npm run dev
 Useful checks:
 
 ```bash
+npm run migrations:check
+npm run scripts:check
 npm run lint
 npm run build
 npm test
+npm run test:integration
 ```
+
+`npm run test:integration` checks `DATABASE_URL`, starts the compose Postgres
+service when Docker is available, runs migrations, and then runs the database
+backed Vitest suite. Set `INTEGRATION_AUTO_START_POSTGRES=false` to require an
+already-running database, or `INTEGRATION_RUN_MIGRATIONS=false` when migrations
+were run separately.
 
 Manual diagnostics live in `scripts/dev/`. They are not part of CI, deploy, or
 release evidence.
+
+## Migrations
+
+Root `migrations/**` is the only canonical SQL migration directory. Do not add
+SQL migrations under `src/database/migrations/**`; CI rejects duplicate migration
+trees. The runner records applied files in `schema_migrations` and backfills that
+table from the legacy numeric `migrations` table when upgrading older databases.
 
 ## Repo Map
 

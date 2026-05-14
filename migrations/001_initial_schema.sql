@@ -108,4 +108,6 @@ CREATE TABLE IF NOT EXISTS migrations (
 );
 
 -- Record this migration
-INSERT INTO migrations (id, name) VALUES (1, '001_initial');
+INSERT INTO migrations (id, name)
+VALUES (1, '001_initial')
+ON CONFLICT (id) DO NOTHING;

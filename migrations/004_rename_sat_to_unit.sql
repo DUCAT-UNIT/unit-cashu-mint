@@ -8,3 +8,7 @@ UPDATE mint_utxos SET unit = 'unit' WHERE unit = 'sat';
 
 -- Update the default on mint_utxos column
 ALTER TABLE mint_utxos ALTER COLUMN unit SET DEFAULT 'unit';
+
+INSERT INTO migrations (id, name)
+VALUES (4, '004_rename_sat_to_unit')
+ON CONFLICT (id) DO NOTHING;

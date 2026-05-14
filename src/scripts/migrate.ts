@@ -13,7 +13,9 @@ import { logger } from '../utils/logger.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// Migrations directory
+// Root migrations are the only canonical SQL migration source. The compiled
+// script lives at dist/scripts/migrate.js, so ../../migrations resolves to the
+// repo/container migrations directory in both tsx and built Node runs.
 const MIGRATIONS_DIR = join(__dirname, '../../migrations')
 
 async function runMigrations() {
@@ -28,6 +30,13 @@ async function runMigrations() {
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS migrations (
+        id INTEGER PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
 
     // Get list of migration files
     const files = await readdir(MIGRATIONS_DIR)
@@ -37,6 +46,8 @@ async function runMigrations() {
       .sort() // Sort alphabetically (assumes format: 001_name.sql, 002_name.sql, etc.)
 
     logger.info({ count: sqlFiles.length }, 'Found migration files')
+
+    await backfillSchemaMigrationsFromLegacyTable(sqlFiles)
 
     // Check which migrations have already been applied
     const appliedResult = await pool.query<{ migration_name: string }>(
@@ -82,6 +93,41 @@ async function runMigrations() {
     throw error
   } finally {
     await pool.end()
+  }
+}
+
+async function backfillSchemaMigrationsFromLegacyTable(sqlFiles: string[]): Promise<void> {
+  const currentResult = await pool.query<{ migration_name: string }>(
+    'SELECT migration_name FROM schema_migrations'
+  )
+  const current = new Set(currentResult.rows.map((row) => row.migration_name))
+  const filesById = new Map(
+    sqlFiles.map((file) => [Number(file.slice(0, 3)), file] as const)
+  )
+  const legacyResult = await pool.query<{ id: number; name: string }>(
+    'SELECT id, name FROM migrations ORDER BY id'
+  )
+
+  const backfilled: string[] = []
+  for (const row of legacyResult.rows) {
+    const file = filesById.get(Number(row.id))
+    if (!file || current.has(file)) {
+      continue
+    }
+    await pool.query(
+      `INSERT INTO schema_migrations (migration_name)
+       VALUES ($1)
+       ON CONFLICT (migration_name) DO NOTHING`,
+      [file]
+    )
+    backfilled.push(file)
+  }
+
+  if (backfilled.length > 0) {
+    logger.info(
+      { migrations: backfilled },
+      'Backfilled schema_migrations from legacy migrations table'
+    )
   }
 }
 

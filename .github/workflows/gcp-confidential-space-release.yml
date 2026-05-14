@@ -170,11 +170,10 @@ jobs:
       - name: Static checks
         run: |
           set -euo pipefail
+          npm run migrations:check
+          npm run scripts:check
           npm run lint
           npm run build
-          node --check scripts/gcp-confidential-space-build.mjs
-          node --check scripts/gcp-confidential-space-attest.mjs
-          node --check scripts/gcp-confidential-space-caddy-storage.mjs
           bash -n gcp-confidential-space/entrypoint.sh
 
       - name: Authenticate to Google Cloud

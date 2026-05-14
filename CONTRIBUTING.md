@@ -42,7 +42,8 @@ If you are reviewing this for security or architecture:
 - Vitest for tests
 - `npm test` runs the self-contained unit suite once; `npm run test:watch`
   starts Vitest watch mode; `npm run test:integration` runs database-backed
-  integration coverage.
+  integration coverage and starts the compose Postgres service when Docker is
+  available.
 - Prettier and ESLint configured; CI runs lint, build, unit tests, and
   integration tests
 - Keep Terraform, release workflow, and application changes separated when the

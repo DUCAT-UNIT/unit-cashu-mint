@@ -87,8 +87,12 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - run: npm run migrations:check
+      - run: npm run scripts:check
       - run: npm run lint
       - run: npm run build
       - run: npm run migrate
       - run: npm test
       - run: npm run test:integration
+        env:
+          INTEGRATION_RUN_MIGRATIONS: 'false'
