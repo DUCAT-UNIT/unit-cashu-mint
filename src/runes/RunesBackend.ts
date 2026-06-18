@@ -267,7 +267,17 @@ export class RunesBackend implements IPaymentBackend {
           ? blockHeight - tx.status.block_height + 1
           : 0
 
-        logger.debug({ txid, vout, confirmations, isAlreadyTracked, runeName: unitRune.name, runeId: unitRune.data.id }, 'Found UTXO with configured UNIT rune')
+        logger.debug(
+          {
+            txid,
+            vout,
+            confirmations,
+            isAlreadyTracked,
+            runeName: unitRune.name,
+            runeId: unitRune.data.id ?? this.runeId,
+          },
+          'Found UTXO with configured UNIT rune'
+        )
 
         if (confirmations >= env.MINT_CONFIRMATIONS) {
           await this.trackDepositUtxo(quoteId, depositAddress, txid, vout, utxoDetails, amount)
@@ -417,14 +427,14 @@ export class RunesBackend implements IPaymentBackend {
   }
 
   private findConfiguredRune(
-    runes?: Record<string, { amount: string; id: string }>
-  ): { name: string; data: { amount: string; id: string } } | undefined {
+    runes?: Record<string, { amount: string | number; id?: string }>
+  ): { name: string; data: { amount: string | number; id?: string } } | undefined {
     if (!runes) {
       return undefined
     }
 
     for (const [name, data] of Object.entries(runes)) {
-      if (data.id === this.runeId) {
+      if (data.id && data.id === this.runeId) {
         return { name, data }
       }
     }

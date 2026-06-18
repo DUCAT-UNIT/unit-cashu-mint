@@ -33,6 +33,7 @@ try {
   logger.info(`📝 Mint info: http://${env.HOST}:${env.PORT}/v1/info`)
   logger.info(`🌐 Network: ${env.NETWORK}`)
   logger.info(`🎯 UNIT Rune ID: ${env.SUPPORTED_RUNES}`)
+  logger.info(`🎯 UNIT Rune Name: ${env.SUPPORTED_RUNE_NAMES || 'default'}`)
   logger.info(`⏰ Background tasks: Deposit monitoring + UTXO sync`)
 } catch (err) {
   logger.error(err, 'Failed to start server')

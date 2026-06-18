@@ -29,7 +29,8 @@ const envSchema = z
     MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
     MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
     MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
-    SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 1527352:1) - required if 'unit' enabled
+    SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 3007902:1) - required if 'unit' enabled
+    SUPPORTED_RUNE_NAMES: z.string().optional(), // UNIT rune display names matching SUPPORTED_RUNES order
 
     // Multi-unit support
     SUPPORTED_UNITS: z.string().default('unit'), // Comma-separated: 'unit', 'btc', or 'unit,btc'
@@ -164,6 +165,18 @@ if (supportedUnits.includes('unit') && !parsed.data.SUPPORTED_RUNES) {
   throw new Error('SUPPORTED_RUNES required for unit')
 }
 
+const supportedRunes = parsed.data.SUPPORTED_RUNES
+  ? parsed.data.SUPPORTED_RUNES.split(',').map((r) => r.trim()).filter(Boolean)
+  : []
+const supportedRuneNames = parsed.data.SUPPORTED_RUNE_NAMES
+  ? parsed.data.SUPPORTED_RUNE_NAMES.split(',').map((r) => r.trim()).filter(Boolean)
+  : []
+
+if (supportedRuneNames.length > 0 && supportedRuneNames.length !== supportedRunes.length) {
+  console.error('❌ SUPPORTED_RUNE_NAMES must match SUPPORTED_RUNES when provided')
+  throw new Error('SUPPORTED_RUNE_NAMES must match SUPPORTED_RUNES')
+}
+
 if (supportsBitcoin && !parsed.data.MINT_BTC_ADDRESS) {
   console.error('❌ MINT_BTC_ADDRESS is required when "btc" or "sat" unit is enabled')
   throw new Error('MINT_BTC_ADDRESS required for bitcoin units')
@@ -195,9 +208,8 @@ export const env = {
   SUPPORTED_UNITS_ARRAY: supportedUnits,
   SUPPORTS_BITCOIN: supportsBitcoin,
   SUPPORTS_LIGHTNING: supportsLightning,
-  SUPPORTED_RUNES_ARRAY: parsed.data.SUPPORTED_RUNES
-    ? parsed.data.SUPPORTED_RUNES.split(',').map((r) => r.trim())
-    : [],
+  SUPPORTED_RUNES_ARRAY: supportedRunes,
+  SUPPORTED_RUNE_NAMES_ARRAY: supportedRuneNames,
   CORS_ORIGINS_ARRAY: parsed.data.CORS_ORIGINS
     ? parsed.data.CORS_ORIGINS.split(',').map((o) => o.trim())
     : undefined,

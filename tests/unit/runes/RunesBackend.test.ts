@@ -207,6 +207,51 @@ describe('RunesBackend', () => {
       )
     })
 
+    it('should detect live MTNY outputs when ord omits the rune id', async () => {
+      runesBackend = new RunesBackend(mockDb, '3007902:1', 'DUCAT•UNIT•MTNY')
+
+      mockOrdClient.getAddressOutputs.mockResolvedValue({
+        outputs: ['live_mtny_txid:1'],
+        runes_balances: [['DUCAT•UNIT•MTNY', '1', '$']],
+      })
+
+      mockOrdClient.getOutput.mockResolvedValue({
+        transaction: 'live_mtny_txid',
+        value: 10000,
+        spent: false,
+        runes: {
+          'DUCAT•UNIT•MTNY': {
+            amount: 100,
+            divisibility: 2,
+            symbol: '$',
+          },
+        },
+      })
+
+      mockEsploraClient.getTransaction.mockResolvedValue({
+        txid: 'live_mtny_txid',
+        status: {
+          confirmed: true,
+          block_height: 100,
+        },
+      })
+
+      mockEsploraClient.getBlockHeight.mockResolvedValue(100)
+
+      const result = await runesBackend.checkDeposit(quoteId, depositAddress)
+
+      expect(result.confirmed).toBe(true)
+      expect(result.amount).toBe(100n)
+      expect(result.txid).toBe('live_mtny_txid')
+      expect(mockUtxoManager.addUtxo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runeAmount: 100n,
+          runeName: 'DUCAT•UNIT•MTNY',
+          runeId: { block: 3007902n, tx: 1n },
+        })
+      )
+    })
+
     it('should exact-match deposits by configured rune id when display name differs', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: ['wrong_txid:0', 'right_txid:1'],

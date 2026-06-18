@@ -60,8 +60,10 @@ export interface OrdOutputResponse {
   runes?: Record<
     string,
     {
-      amount: string
-      id: string // "block:tx"
+      amount: string | number
+      id?: string // "block:tx"; omitted by some ord output responses
+      divisibility?: number
+      symbol?: string
     }
   >
 }

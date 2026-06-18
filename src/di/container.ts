@@ -73,11 +73,19 @@ export function initializeContainer(): DIContainer {
 
   // Register Runes backend if 'unit' is enabled
   if (env.SUPPORTED_UNITS_ARRAY.includes('unit')) {
-    const runesBackend = new RunesBackend(db)
+    const unitRuneId = env.SUPPORTED_RUNES_ARRAY[0]
+    const unitRuneName = env.SUPPORTED_RUNE_NAMES_ARRAY[0]
+    const runesBackend = new RunesBackend(db, unitRuneId, unitRuneName)
     backendRegistry.register(runesBackend, [], ['unit', 'runes'])
     container.register('runesBackend', runesBackend)
     logger.info(
-      { method: 'onchain', unit: 'unit', legacyMethods: ['unit', 'runes'] },
+      {
+        method: 'onchain',
+        unit: 'unit',
+        legacyMethods: ['unit', 'runes'],
+        runeId: runesBackend.getRuneId(),
+        runeName: runesBackend.getRuneName(),
+      },
       'Registered Runes backend'
     )
   }
