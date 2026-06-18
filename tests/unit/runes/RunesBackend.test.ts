@@ -166,6 +166,89 @@ describe('RunesBackend', () => {
       expect(result.confirmations).toBe(6) // 105 - 100 + 1
     })
 
+    it('should detect the configured rune by id when the live display name differs', async () => {
+      mockOrdClient.getAddressOutputs.mockResolvedValue({
+        outputs: ['live_txid:1'],
+        runes_balances: [['DUCAT•UNIT•MTNY', '1', '$']],
+      })
+
+      mockOrdClient.getOutput.mockResolvedValue({
+        transaction: 'live_txid',
+        value: 10000,
+        spent: false,
+        runes: {
+          'DUCAT•UNIT•MTNY': {
+            amount: '1',
+            id: '1527352:1',
+          },
+        },
+      })
+
+      mockEsploraClient.getTransaction.mockResolvedValue({
+        txid: 'live_txid',
+        status: {
+          confirmed: true,
+          block_height: 100,
+        },
+      })
+
+      mockEsploraClient.getBlockHeight.mockResolvedValue(100)
+
+      const result = await runesBackend.checkDeposit(quoteId, depositAddress)
+
+      expect(result.confirmed).toBe(true)
+      expect(result.amount).toBe(1n)
+      expect(result.txid).toBe('live_txid')
+      expect(mockUtxoManager.addUtxo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runeAmount: 1n,
+          runeId: { block: 1527352n, tx: 1n },
+        })
+      )
+    })
+
+    it('should exact-match deposits by configured rune id when display name differs', async () => {
+      mockOrdClient.getAddressOutputs.mockResolvedValue({
+        outputs: ['wrong_txid:0', 'right_txid:1'],
+        runes_balances: [['DUCAT•UNIT•MTNY', '3', '$']],
+      })
+
+      mockOrdClient.getOutput
+        .mockResolvedValueOnce({
+          transaction: 'wrong_txid',
+          value: 10000,
+          spent: false,
+          runes: {
+            'DUCAT•UNIT•MTNY': { amount: '2', id: '1527352:1' },
+          },
+        })
+        .mockResolvedValueOnce({
+          transaction: 'right_txid',
+          value: 10000,
+          spent: false,
+          runes: {
+            'DUCAT•UNIT•MTNY': { amount: '1', id: '1527352:1' },
+          },
+        })
+
+      mockEsploraClient.getTransaction.mockResolvedValue({
+        txid: 'right_txid',
+        status: {
+          confirmed: true,
+          block_height: 100,
+        },
+      })
+
+      mockEsploraClient.getBlockHeight.mockResolvedValue(100)
+
+      const result = await runesBackend.checkDeposit(quoteId, depositAddress, true, 1n)
+
+      expect(result.confirmed).toBe(true)
+      expect(result.amount).toBe(1n)
+      expect(result.txid).toBe('right_txid')
+      expect(result.vout).toBe(1)
+    })
+
     it('should return unconfirmed when no deposits found', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: [],

@@ -140,8 +140,9 @@ export class RunesBackend implements IPaymentBackend {
       // Get address data from Ord to check for outputs
       const ordData = await this.ordClient.getAddressOutputs(depositAddress)
 
-      // Check if there are any runes balances
-      if (!ordData.runes_balances || ordData.runes_balances.length === 0) {
+      const outputs = ordData.outputs ?? []
+
+      if (outputs.length === 0) {
         logger.info({ quoteId, outputCount: ordData.outputs?.length ?? 0 }, 'No runes balances found at address')
         return {
           confirmed: false,
@@ -149,31 +150,23 @@ export class RunesBackend implements IPaymentBackend {
         }
       }
 
-      // Find DUCAT•UNIT•RUNE balance
-      const ducatBalance = ordData.runes_balances.find(
-        ([name]) => name === this.runeName
-      )
-
-      if (!ducatBalance || ordData.outputs.length === 0) {
+      const addressRuneNames = ordData.runes_balances?.map(([name]) => name) ?? []
+      if (!addressRuneNames.includes(this.runeName)) {
         logger.info(
-          { quoteId, outputCount: ordData.outputs.length, runeNames: ordData.runes_balances.map(([name]) => name) },
-          'No DUCAT•UNIT•RUNE balance found or no outputs'
+          { quoteId, outputCount: outputs.length, runeNames: addressRuneNames, runeId: this.runeId },
+          'Configured UNIT rune display name not present at address; checking outputs by rune id'
         )
-        return {
-          confirmed: false,
-          confirmations: 0,
-        }
       }
 
       logger.info(
-        { quoteId, outputCount: ordData.outputs.length, includeTracked, trackedCount: existingDeposit.length, expectedAmount: expectedAmount?.toString() },
+        { quoteId, outputCount: outputs.length, includeTracked, trackedCount: existingDeposit.length, expectedAmount: expectedAmount?.toString() },
         'Checking outputs for deposit'
       )
 
       // If expectedAmount is provided, look for an unspent UTXO matching that exact amount
       // This allows multiple quotes to share the same deposit address
       if (expectedAmount !== undefined) {
-        for (const output of ordData.outputs) {
+        for (const output of outputs) {
           const [txid, voutStr] = output.split(':')
           const vout = parseInt(voutStr, 10)
           const claimedByQuote = claimedDeposits.get(`${txid}:${vout}`)
@@ -188,12 +181,12 @@ export class RunesBackend implements IPaymentBackend {
             continue
           }
 
-          const unitRune = utxoDetails.runes[this.runeName]
+          const unitRune = this.findConfiguredRune(utxoDetails.runes)
           if (!unitRune) {
             continue
           }
 
-          const amount = BigInt(unitRune.amount)
+          const amount = BigInt(unitRune.data.amount)
 
           // Check if amount matches expected
           if (amount === expectedAmount) {
@@ -230,7 +223,7 @@ export class RunesBackend implements IPaymentBackend {
       }
 
       // Fallback: Original behavior - find any untracked UTXO (for backwards compatibility)
-      for (const output of ordData.outputs) {
+      for (const output of outputs) {
         const [txid, voutStr] = output.split(':')
         const vout = parseInt(voutStr, 10)
         const claimedByQuote = claimedDeposits.get(`${txid}:${vout}`)
@@ -250,6 +243,22 @@ export class RunesBackend implements IPaymentBackend {
           continue
         }
 
+        // Check if this UTXO has UNIT runes
+        const utxoDetails = await this.ordClient.getOutput(txid, vout)
+        if (!utxoDetails || !utxoDetails.runes) {
+          logger.debug({ txid, vout }, 'UTXO has no runes, skipping')
+          continue
+        }
+
+        const unitRune = this.findConfiguredRune(utxoDetails.runes)
+
+        if (!unitRune) {
+          logger.debug({ txid, vout, availableRunes: Object.keys(utxoDetails.runes), runeId: this.runeId }, 'UTXO does not have configured UNIT rune, skipping')
+          continue
+        }
+
+        const amount = BigInt(unitRune.data.amount)
+
         // Check confirmations
         const tx = await this.esploraClient.getTransaction(txid)
         const blockHeight = await this.esploraClient.getBlockHeight()
@@ -258,24 +267,7 @@ export class RunesBackend implements IPaymentBackend {
           ? blockHeight - tx.status.block_height + 1
           : 0
 
-        // Check if this UTXO has UNIT runes
-        const utxoDetails = await this.ordClient.getOutput(txid, vout)
-        if (!utxoDetails || !utxoDetails.runes) {
-          logger.debug({ txid, vout }, 'UTXO has no runes, skipping')
-          continue
-        }
-
-        // Check if DUCAT•UNIT•RUNE is present by name
-        const unitRune = utxoDetails.runes[this.runeName]
-
-        if (!unitRune) {
-          logger.debug({ txid, vout, availableRunes: Object.keys(utxoDetails.runes) }, 'UTXO does not have DUCAT•UNIT•RUNE, skipping')
-          continue
-        }
-
-        logger.debug({ txid, vout, confirmations, isAlreadyTracked }, 'Found UTXO with DUCAT•UNIT•RUNE')
-
-        const amount = BigInt(unitRune.amount)
+        logger.debug({ txid, vout, confirmations, isAlreadyTracked, runeName: unitRune.name, runeId: unitRune.data.id }, 'Found UTXO with configured UNIT rune')
 
         if (confirmations >= env.MINT_CONFIRMATIONS) {
           await this.trackDepositUtxo(quoteId, depositAddress, txid, vout, utxoDetails, amount)
@@ -354,17 +346,16 @@ export class RunesBackend implements IPaymentBackend {
         }
       }
 
-      // Check for DUCAT•UNIT•RUNE
-      const unitRune = utxoDetails.runes[this.runeName]
+      const unitRune = this.findConfiguredRune(utxoDetails.runes)
       if (!unitRune) {
-        logger.warn({ quoteId, txid, vout, availableRunes: Object.keys(utxoDetails.runes) }, 'UTXO does not have DUCAT•UNIT•RUNE')
+        logger.warn({ quoteId, txid, vout, availableRunes: Object.keys(utxoDetails.runes), runeId: this.runeId }, 'UTXO does not have configured UNIT rune')
         return {
           confirmed: false,
           confirmations: 0,
         }
       }
 
-      const amount = BigInt(unitRune.amount)
+      const amount = BigInt(unitRune.data.amount)
 
       if (confirmations >= env.MINT_CONFIRMATIONS) {
         const outputAddress = tx.vout?.[vout]?.scriptpubkey_address
@@ -423,6 +414,23 @@ export class RunesBackend implements IPaymentBackend {
     }
 
     return this.walletKeyManager.deriveTaprootAddress(accountIndex).internalPubkey
+  }
+
+  private findConfiguredRune(
+    runes?: Record<string, { amount: string; id: string }>
+  ): { name: string; data: { amount: string; id: string } } | undefined {
+    if (!runes) {
+      return undefined
+    }
+
+    for (const [name, data] of Object.entries(runes)) {
+      if (data.id === this.runeId) {
+        return { name, data }
+      }
+    }
+
+    const namedRune = runes[this.runeName]
+    return namedRune ? { name: this.runeName, data: namedRune } : undefined
   }
 
   private normalizeTrackedRuneUtxos(records: MintUtxoRecord[]): MintUtxoRecord[] {
@@ -696,11 +704,11 @@ export class RunesBackend implements IPaymentBackend {
         // Get detailed info
         const outputData = await this.ordClient.getOutput(txid, vout)
 
-        // Check if it has DUCAT•UNIT•RUNE
-        if (outputData.runes && outputData.runes[this.runeName]) {
-          const runeData = outputData.runes[this.runeName]
+        const configuredRune = this.findConfiguredRune(outputData.runes)
+        if (configuredRune) {
+          const runeData = configuredRune.data
 
-          // Parse rune ID from the data, or use the known DUCAT•UNIT•RUNE ID
+          // Parse rune ID from the data, or use the configured UNIT rune ID.
           let runeId: RuneId
           if (runeData.id) {
             const [blockStr, txStr] = runeData.id.split(':')
@@ -715,7 +723,7 @@ export class RunesBackend implements IPaymentBackend {
               block: BigInt(blockStr),
               tx: BigInt(txStr),
             }
-            logger.debug({ txid, vout }, 'Using default DUCAT•UNIT•RUNE ID')
+            logger.debug({ txid, vout, runeId: this.runeId }, 'Using configured UNIT rune ID')
           }
 
           runeUtxos.push({
@@ -724,7 +732,7 @@ export class RunesBackend implements IPaymentBackend {
             value: outputData.value,
             address: this.taprootAddress,
             runeAmount: BigInt(runeData.amount),
-            runeName: this.runeName,
+            runeName: configuredRune.name,
             runeId,
             accountIndex: 0,
             taprootInternalPubkey: this.taprootPubkey,
