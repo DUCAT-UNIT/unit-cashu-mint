@@ -727,7 +727,7 @@ export class RunesBackend implements IPaymentBackend {
               tx: BigInt(txStr),
             }
           } else {
-            // Use the known DUCAT•UNIT•RUNE ID
+            // Use the known DUCAT•UNIT•MTNY ID
             const [blockStr, txStr] = this.runeId.split(':')
             runeId = {
               block: BigInt(blockStr),

@@ -26,7 +26,7 @@ vi.mock('../../../src/config/env.js', () => ({
     MIN_MINT_AMOUNT: 1,
     MAX_MINT_AMOUNT: 100000000,
     MINT_CONFIRMATIONS: 1,
-    SUPPORTED_RUNES_ARRAY: ['1527352:1'],
+    SUPPORTED_RUNES_ARRAY: ['3007902:1'],
   },
 }))
 
@@ -49,7 +49,7 @@ function createMintQuote(overrides: Partial<MintQuote>): MintQuote {
     id: 'quote-id',
     amount: 500,
     unit: 'unit',
-    rune_id: '1527352:1',
+    rune_id: '3007902:1',
     method: 'unit',
     request: 'tb1ptest123',
     state: 'UNPAID',
@@ -125,7 +125,7 @@ describe('MintService', () => {
         expect.objectContaining({
           amount: 0,
           unit: 'unit',
-          rune_id: '1527352:1',
+          rune_id: '3007902:1',
           method: 'onchain',
           pubkey,
           amount_paid: 0,
@@ -157,13 +157,13 @@ describe('MintService', () => {
           }) as any
       )
 
-      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3', 100)
+      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '3007902:1', 100)
 
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: 0,
           unit: 'unit',
-          rune_id: '840000:3',
+          rune_id: '3007902:1',
           method: 'onchain',
         })
       )
@@ -183,14 +183,14 @@ describe('MintService', () => {
           }) as any
       )
 
-      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '840000:3')
+      await service.createOnchainMintQuote('unit', '02' + '22'.repeat(32), '3007902:1')
 
       expect(onchainBackend.createDepositAddress).toHaveBeenCalledWith(expect.any(String), 0n)
       expect(mockQuoteRepo.createMintQuote).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: 0,
           unit: 'unit',
-          rune_id: '840000:3',
+          rune_id: '3007902:1',
           method: 'onchain',
         })
       )

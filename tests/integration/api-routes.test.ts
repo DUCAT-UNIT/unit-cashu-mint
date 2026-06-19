@@ -7,7 +7,7 @@ describe('API Routes Integration', () => {
   let server: FastifyInstance
   let keysetId: string
   const UNIT = 'unit' // UNIT tokens, not sats!
-  const RUNE_ID = '840000:3'
+  const RUNE_ID = '3007902:1'
 
   beforeAll(async () => {
     await testConnection()
