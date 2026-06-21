@@ -375,7 +375,7 @@ export class MintService {
         throw new AmountMismatchError(lockedQuote.amount, totalOutput)
       }
 
-      await this.ensureOutputsUseUnit(outputs, lockedQuote.unit)
+      await this.ensureOutputsUseQuoteKeyset(outputs, lockedQuote)
 
       const signatures = await this.mintCrypto.signBlindedMessages(outputs)
       await this.signatureRepo?.saveMany(outputs, signatures, client)
@@ -455,7 +455,7 @@ export class MintService {
         throw new AmountMismatchError(availableAmount, totalOutput)
       }
 
-      await this.ensureOutputsUseUnit(outputs, quote.unit)
+      await this.ensureOutputsUseQuoteKeyset(outputs, quote)
       const signatures = await this.mintCrypto.signBlindedMessages(outputs)
       await this.signatureRepo?.saveMany(outputs, signatures, client)
       await this.quoteRepo.incrementMintQuoteIssued(quoteId, totalOutput, client)
@@ -623,13 +623,27 @@ export class MintService {
     }
   }
 
-  private async ensureOutputsUseUnit(outputs: BlindedMessage[], unit: string): Promise<void> {
-    const activeKeysets = await this.keyManager.getActiveKeysetsByUnit(unit)
-    const keysetIds = new Set(activeKeysets.map((keyset) => keyset.id))
+  private async ensureOutputsUseQuoteKeyset(
+    outputs: BlindedMessage[],
+    quote: { unit: string; rune_id?: string }
+  ): Promise<void> {
+    const runeId = quote.rune_id || this.defaultRuneIdForUnit(quote.unit)
+    const keyset = await this.keyManager.getKeysetByRuneIdAndUnit(runeId, quote.unit)
+    if (!keyset) {
+      throw new MintError(
+        'Output keyset does not match quote unit',
+        20001,
+        `unit=${quote.unit} rune_id=${runeId}`
+      )
+    }
 
     for (const output of outputs) {
-      if (!keysetIds.has(output.id)) {
-        throw new MintError(`Output keyset does not match quote unit`, 20001, `id=${output.id}`)
+      if (output.id !== keyset.id) {
+        throw new MintError(
+          `Output keyset does not match quote unit`,
+          20001,
+          `id=${output.id} expected=${keyset.id} unit=${quote.unit} rune_id=${runeId}`
+        )
       }
     }
   }

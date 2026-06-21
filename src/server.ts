@@ -17,6 +17,7 @@ try {
 
   // Preload active keysets into cache
   const keyManager = server.diContainer.resolve<KeyManager>('keyManager')
+  await keyManager.reconcileConfiguredKeysets()
   await keyManager.preloadActiveKeysets()
 
   // Start background tasks

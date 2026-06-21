@@ -625,6 +625,36 @@ describe('MintService', () => {
       expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
     })
 
+    it('should REJECT stale active keysets for the same quote unit', async () => {
+      vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
+        createMintQuote({
+          id: quoteId,
+          amount: 500,
+          state: 'PAID',
+          rune_id: '1527352:1',
+        })
+      )
+
+      vi.mocked(mockBackend.checkDeposit).mockResolvedValue({
+        confirmed: true,
+        amount: 500n,
+        txid: 'deposit_txid',
+        vout: 0,
+        confirmations: 6,
+      })
+      vi.mocked(mockKeyManager.getKeysetByRuneIdAndUnit).mockResolvedValue({
+        id: 'current-unit-keyset',
+      } as any)
+
+      const outputs = [{ id: 'stale-active-unit-keyset', amount: 500, B_: '02xyz' }]
+
+      await expect(mintService.mintTokens(quoteId, outputs)).rejects.toThrow(
+        'Output keyset does not match quote unit'
+      )
+      expect(mockKeyManager.getKeysetByRuneIdAndUnit).toHaveBeenCalledWith('1527352:1', 'unit')
+      expect(mockMintCrypto.signBlindedMessages).not.toHaveBeenCalled()
+    })
+
     it('should REJECT already issued quote', async () => {
       vi.mocked(mockQuoteRepo.findMintQuoteByIdOrThrow).mockResolvedValue(
         createMintQuote({

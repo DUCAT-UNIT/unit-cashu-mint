@@ -98,9 +98,12 @@ export class MintCrypto {
     return Promise.all(messages.map((msg) => this.signBlindedMessage(msg, includeDleq)))
   }
 
-  async getKeysetUnit(keysetId: string): Promise<string> {
+  async getKeysetUnit(
+    keysetId: string,
+    options: { allowInactive?: boolean } = {}
+  ): Promise<string> {
     const keyset = await this.keyManager.getPublicKeys(keysetId)
-    if (!keyset.active) {
+    if (!keyset.active && !options.allowInactive) {
       throw new KeysetInactiveError(keysetId)
     }
 
@@ -109,7 +112,7 @@ export class MintCrypto {
 
   async ensureProofsUseUnit(proofs: Array<Pick<Proof, 'id'>>, unit: string): Promise<void> {
     for (const proof of proofs) {
-      const keysetUnit = await this.getKeysetUnit(proof.id)
+      const keysetUnit = await this.getKeysetUnit(proof.id, { allowInactive: true })
       if (keysetUnit !== unit) {
         throw new KeysetUnitMismatchError(unit, keysetUnit, proof.id)
       }
@@ -136,7 +139,7 @@ export class MintCrypto {
       throw new MintError('Swap requires input proofs', 11002, 'inputs=0')
     }
 
-    const unit = await this.getKeysetUnit(proofs[0].id)
+    const unit = await this.getKeysetUnit(proofs[0].id, { allowInactive: true })
     await this.ensureProofsUseUnit(proofs, unit)
     await this.ensureOutputsUseUnit(outputs, unit)
 
@@ -150,7 +153,9 @@ export class MintCrypto {
   async verifyProof(proof: Proof): Promise<boolean> {
     try {
       // Get private key
-      const privateKeyHex = await this.keyManager.getPrivateKey(proof.id, proof.amount)
+      const privateKeyHex = await this.keyManager.getPrivateKey(proof.id, proof.amount, {
+        allowInactive: true,
+      })
       const k = BigInt('0x' + privateKeyHex)
 
       // Hash secret to curve point

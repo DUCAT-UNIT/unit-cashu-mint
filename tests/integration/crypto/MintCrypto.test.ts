@@ -144,6 +144,15 @@ describe('MintCrypto', () => {
         message: 'Keyset unit mismatch',
       })
     })
+
+    it('allows inactive historical input keysets but rejects inactive output keysets', async () => {
+      await keyManager.deactivateKeyset(keysetId)
+
+      await expect(mintCrypto.ensureProofsUseUnit([{ id: keysetId }], 'sat')).resolves.toBeUndefined()
+      await expect(mintCrypto.ensureOutputsUseUnit([{ id: keysetId }], 'sat')).rejects.toThrow(
+        'Keyset inactive'
+      )
+    })
   })
 
   // Note: Full proof verification test would require proper blinding/unblinding

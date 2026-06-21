@@ -97,6 +97,21 @@ export class KeysetRepository {
     return keysetFromRow(result.rows[0])
   }
 
+  async deactivateActiveExceptIds(allowedIds: string[]): Promise<Keyset[]> {
+    const result = await query<KeysetRow>(
+      `
+      UPDATE keysets
+      SET active = false
+      WHERE active = true
+        AND NOT (id = ANY($1::varchar[]))
+      RETURNING *
+    `,
+      [allowedIds]
+    )
+
+    return result.rows.map(keysetFromRow)
+  }
+
   async setActive(id: string, active: boolean): Promise<void> {
     await query('UPDATE keysets SET active = $1 WHERE id = $2', [active, id])
   }

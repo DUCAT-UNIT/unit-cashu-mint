@@ -17,8 +17,29 @@ const DENOMINATIONS = [
 
 export const DEFAULT_INPUT_FEE_PPK = 0
 
+export interface KeysetTarget {
+  runeId: string
+  unit: string
+}
+
 function configuredInputFeePpk(): number {
   return env.MINT_INPUT_FEE_PPK
+}
+
+export function configuredKeysetTargets(): KeysetTarget[] {
+  const targets: KeysetTarget[] = []
+
+  if ((env.SUPPORTED_UNITS_ARRAY ?? []).includes('unit')) {
+    for (const runeId of env.SUPPORTED_RUNES_ARRAY ?? []) {
+      targets.push({ runeId, unit: 'unit' })
+    }
+  }
+
+  if (env.SUPPORTS_BITCOIN || env.SUPPORTS_LIGHTNING) {
+    targets.push({ runeId: 'btc:0', unit: 'sat' })
+  }
+
+  return targets
 }
 
 export function deriveMintKeysetId(
@@ -47,35 +68,7 @@ export class KeyManager {
    */
   async generateKeyset(runeId: string, unit: string = 'unit'): Promise<Keyset> {
     logger.info({ runeId, unit }, 'Generating new keyset')
-
-    // Generate seed from mint seed + rune ID + unit for deterministic keys
-    // IMPORTANT: Must be deterministic so keys survive server restarts
-    // IMPORTANT: Unit must be included to ensure different units have different keysets
-    const seed = Buffer.concat([
-      Buffer.from(env.MINT_SEED, 'hex'),
-      Buffer.from(runeId),
-      Buffer.from(unit),
-    ])
-
-    const private_keys: Record<number, string> = {}
-    const public_keys: Record<number, string> = {}
-
-    // Generate key pair for each denomination
-    for (const amount of DENOMINATIONS) {
-      // Derive private key from seed + amount
-      const derivationPath = Buffer.concat([seed, Buffer.from(amount.toString())])
-      const hash = createHash('sha256').update(derivationPath).digest()
-      const privateKey = hash.toString('hex')
-
-      // Derive public key
-      const publicKey = getPublicKey(hash, true)
-
-      private_keys[amount] = privateKey
-      public_keys[amount] = Buffer.from(publicKey).toString('hex')
-    }
-
-    const inputFeePpk = configuredInputFeePpk()
-    const id = deriveMintKeysetId(public_keys, unit, inputFeePpk)
+    const { id, private_keys, public_keys, inputFeePpk } = this.deriveKeysetMaterial(runeId, unit)
 
     // Encrypt private keys before storing
     const encryptedPrivateKeys = await this.encryptKeys(private_keys, id)
@@ -108,7 +101,11 @@ export class KeyManager {
   /**
    * Get private key for a specific amount in a keyset
    */
-  async getPrivateKey(keysetId: string, amount: number): Promise<string> {
+  async getPrivateKey(
+    keysetId: string,
+    amount: number,
+    options: { allowInactive?: boolean } = {}
+  ): Promise<string> {
     let keyset = this.keysetCache.get(keysetId)
 
     if (!keyset) {
@@ -130,7 +127,7 @@ export class KeyManager {
       }
     }
 
-    if (!keyset.active) {
+    if (!keyset.active && !options.allowInactive) {
       throw new KeysetInactiveError(keysetId)
     }
 
@@ -219,6 +216,33 @@ export class KeyManager {
     }
 
     return keysets
+  }
+
+  async reconcileConfiguredKeysets(): Promise<Keyset[]> {
+    const targets = configuredKeysetTargets()
+    const configuredKeysets: Keyset[] = []
+
+    for (const target of targets) {
+      configuredKeysets.push(await this.ensureConfiguredKeyset(target.runeId, target.unit))
+    }
+
+    const configuredIds = configuredKeysets.map((keyset) => keyset.id)
+    const deactivatedKeysets = await this.keysetRepo.deactivateActiveExceptIds(configuredIds)
+    for (const keyset of deactivatedKeysets) {
+      this.keysetCache.delete(keyset.id)
+    }
+
+    if (deactivatedKeysets.length > 0) {
+      logger.warn(
+        {
+          configuredIds,
+          deactivatedIds: deactivatedKeysets.map((keyset) => keyset.id),
+        },
+        'Deactivated stale active keysets outside current mint configuration'
+      )
+    }
+
+    return this.getActiveKeysets()
   }
 
   /**
@@ -340,5 +364,69 @@ export class KeyManager {
     logger.info('Preloading active keysets...')
     const keysets = await this.getActiveKeysets()
     logger.info({ count: keysets.length }, 'Active keysets preloaded')
+  }
+
+  private async ensureConfiguredKeyset(runeId: string, unit: string): Promise<Keyset> {
+    const { id } = this.deriveKeysetMaterial(runeId, unit)
+    const existing = await this.keysetRepo.findById(id)
+
+    if (existing) {
+      if (!existing.active) {
+        await this.keysetRepo.setActive(id, true)
+        this.keysetCache.delete(id)
+        logger.info({ keysetId: id, runeId, unit }, 'Reactivated configured keyset')
+        return this.keysetRepo.findByIdOrThrow(id)
+      }
+
+      return existing
+    }
+
+    try {
+      return await this.generateKeyset(runeId, unit)
+    } catch (error) {
+      if (!hasErrorCode(error, '23505')) {
+        throw error
+      }
+
+      return this.keysetRepo.findByIdOrThrow(id)
+    }
+  }
+
+  private deriveKeysetMaterial(
+    runeId: string,
+    unit: string
+  ): {
+    id: string
+    private_keys: Record<number, string>
+    public_keys: Record<number, string>
+    inputFeePpk: number
+  } {
+    // Generate seed from mint seed + rune ID + unit for deterministic keys.
+    // The unit is part of the seed so different Cashu units cannot share keys.
+    const seed = Buffer.concat([
+      Buffer.from(env.MINT_SEED, 'hex'),
+      Buffer.from(runeId),
+      Buffer.from(unit),
+    ])
+
+    const private_keys: Record<number, string> = {}
+    const public_keys: Record<number, string> = {}
+
+    for (const amount of DENOMINATIONS) {
+      const derivationPath = Buffer.concat([seed, Buffer.from(amount.toString())])
+      const hash = createHash('sha256').update(derivationPath).digest()
+      const publicKey = getPublicKey(hash, true)
+
+      private_keys[amount] = hash.toString('hex')
+      public_keys[amount] = Buffer.from(publicKey).toString('hex')
+    }
+
+    const inputFeePpk = configuredInputFeePpk()
+    return {
+      id: deriveMintKeysetId(public_keys, unit, inputFeePpk),
+      private_keys,
+      public_keys,
+      inputFeePpk,
+    }
   }
 }
