@@ -23,8 +23,8 @@ describe('UtxoManager', () => {
     value: 10000,
     address: 'tb1ptest123',
     runeAmount: 1000n,
-    runeName: 'DUCAT•UNIT•MTNY',
-    runeId: { block: 3007902n, tx: 1n },
+    runeName: 'DUCAT•UNIT•RUNE',
+    runeId: { block: 1527352n, tx: 1n },
   }
 
   beforeEach(() => {
@@ -49,7 +49,7 @@ describe('UtxoManager', () => {
       expect(query).toContain('INSERT INTO mint_utxos')
       expect(params).toContain(sampleUtxo.txid)
       expect(params).toContain(sampleUtxo.vout)
-      expect(params).toContain('3007902:1') // runeId
+      expect(params).toContain('1527352:1') // runeId
       expect(params).toContain('1000') // runeAmount as string
       expect(params).toContain(sampleUtxo.address)
       expect(params).toContain(sampleUtxo.value)
@@ -88,7 +88,7 @@ describe('UtxoManager', () => {
         {
           txid: '0'.repeat(64),
           vout: 0,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '1000',
           address: 'tb1ptest123',
           value: 10000,
@@ -98,7 +98,7 @@ describe('UtxoManager', () => {
         {
           txid: '1'.repeat(64),
           vout: 1,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '2000',
           address: 'tb1ptest123',
           value: 10000,
@@ -109,7 +109,7 @@ describe('UtxoManager', () => {
 
       vi.mocked(mockPool.query).mockResolvedValue({ rows: mockUtxos, rowCount: 2 } as any)
 
-      const result = await utxoManager.getUnspentUtxos('3007902:1')
+      const result = await utxoManager.getUnspentUtxos('1527352:1')
 
       expect(mockPool.query).toHaveBeenCalledTimes(1)
       const [query, params] = vi.mocked(mockPool.query).mock.calls[0]
@@ -118,7 +118,7 @@ describe('UtxoManager', () => {
       expect(query).toContain('FROM mint_utxos u')
       expect(query).toContain('LEFT JOIN mint_deposits d')
       expect(query).toContain('u.spent = false')
-      expect(params).toContain('3007902:1')
+      expect(params).toContain('1527352:1')
 
       expect(result).toHaveLength(2)
       expect(result[0].amount).toBe('1000')
@@ -128,7 +128,7 @@ describe('UtxoManager', () => {
     it('should return empty array when no unspent UTXOs', async () => {
       vi.mocked(mockPool.query).mockResolvedValue({ rows: [], rowCount: 0 } as any)
 
-      const result = await utxoManager.getUnspentUtxos('3007902:1')
+      const result = await utxoManager.getUnspentUtxos('1527352:1')
 
       expect(result).toEqual([])
     })
@@ -141,14 +141,14 @@ describe('UtxoManager', () => {
         rowCount: 1,
       } as any)
 
-      const balance = await utxoManager.getBalance('3007902:1')
+      const balance = await utxoManager.getBalance('1527352:1')
 
       expect(balance).toBe(5000n)
       expect(mockPool.query).toHaveBeenCalledTimes(1)
 
       const [query, params] = vi.mocked(mockPool.query).mock.calls[0]
       expect(query).toContain('SUM(amount::BIGINT)')
-      expect(params).toContain('3007902:1')
+      expect(params).toContain('1527352:1')
     })
 
     it('should return 0 when no UTXOs exist', async () => {
@@ -157,7 +157,7 @@ describe('UtxoManager', () => {
         rowCount: 1,
       } as any)
 
-      const balance = await utxoManager.getBalance('3007902:1')
+      const balance = await utxoManager.getBalance('1527352:1')
 
       expect(balance).toBe(0n)
     })
@@ -168,7 +168,7 @@ describe('UtxoManager', () => {
         rowCount: 1,
       } as any)
 
-      const balance = await utxoManager.getBalance('3007902:1')
+      const balance = await utxoManager.getBalance('1527352:1')
 
       expect(balance).toBe(0n)
     })
@@ -212,8 +212,8 @@ describe('UtxoManager', () => {
           value: 10000,
           address: 'tb1ptest123',
           runeAmount: 1000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
         {
           txid: '1'.repeat(64),
@@ -221,8 +221,8 @@ describe('UtxoManager', () => {
           value: 10000,
           address: 'tb1ptest123',
           runeAmount: 2000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 

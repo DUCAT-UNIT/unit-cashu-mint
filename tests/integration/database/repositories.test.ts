@@ -13,7 +13,7 @@ describe('ProofRepository', () => {
     // Create a test keyset for foreign key constraints
     const keysetRepo = new KeysetRepository()
     const keyManager = new KeyManager(keysetRepo)
-    const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+    const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
     keysetId = keyset.id
   })
 
@@ -204,7 +204,7 @@ describe('QuoteRepository', () => {
         id: quoteId,
         amount: 1000,
         unit: 'sat',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         request: 'test_request_' + Date.now(),
         state: 'UNPAID',
         expiry: Date.now() + 3600000,
@@ -234,7 +234,7 @@ describe('QuoteRepository', () => {
         id: quoteId,
         amount: 1000,
         unit: 'sat',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         request: 'test_req',
         state: 'UNPAID',
         expiry: Date.now() + 3600000,
@@ -257,7 +257,7 @@ describe('QuoteRepository', () => {
         id: quoteId,
         amount: 1000,
         unit: 'sat',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         request,
         state: 'UNPAID',
         expiry: Date.now() + 3600000,
@@ -279,7 +279,7 @@ describe('QuoteRepository', () => {
         amount: 1000,
         fee_reserve: 100,
         unit: 'sat',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         request: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
         state: 'UNPAID',
         expiry: Date.now() + 3600000,
@@ -310,7 +310,7 @@ describe('QuoteRepository', () => {
         amount: 1000,
         fee_reserve: 100,
         unit: 'sat',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         request: 'test_addr',
         state: 'UNPAID',
         expiry: Date.now() + 3600000,
@@ -349,7 +349,7 @@ describe('KeysetRepository', () => {
 
   describe('findByRuneId', () => {
     it('should return array of keysets for rune ID', async () => {
-      const found = await keysetRepo.findByRuneId('3007902:1')
+      const found = await keysetRepo.findByRuneId('1527352:1')
 
       expect(Array.isArray(found)).toBe(true)
     })

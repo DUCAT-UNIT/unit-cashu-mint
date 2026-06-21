@@ -40,7 +40,7 @@ describe('API Clients', () => {
             'ghi789:2',
           ],
           runes_balances: [
-            ['DUCAT•UNIT•MTNY', '50000', '$'],
+            ['DUCAT•UNIT•RUNE', '50000', '$'],
             ['OTHER•RUNE', '1000', '¤'],
           ],
         }
@@ -55,7 +55,7 @@ describe('API Clients', () => {
         expect(result.outputs).toHaveLength(3)
         expect(result.outputs[0]).toBe('abc123:0')
         expect(result.runes_balances).toHaveLength(2)
-        expect(result.runes_balances![0][0]).toBe('DUCAT•UNIT•MTNY')
+        expect(result.runes_balances![0][0]).toBe('DUCAT•UNIT•RUNE')
         expect(result.runes_balances![0][1]).toBe('50000')
       })
 
@@ -96,11 +96,11 @@ describe('API Clients', () => {
           transaction: '8f627a40614b7a7d38bad3c12dd7d0581aead57f917387ae210dd925ec1104df',
           value: 10000,
           runes: {
-            'DUCAT•UNIT•MTNY': {
+            'DUCAT•UNIT•RUNE': {
               amount: '2000',
               divisibility: 2,
               symbol: '$',
-              id: '3007902:1',
+              id: '1527352:1',
             },
           },
         }
@@ -117,8 +117,8 @@ describe('API Clients', () => {
 
         expect(result.value).toBe(10000)
         expect(result.runes).toBeDefined()
-        expect(result.runes!['DUCAT•UNIT•MTNY'].amount).toBe('2000')
-        expect(result.runes!['DUCAT•UNIT•MTNY'].id).toBe('3007902:1')
+        expect(result.runes!['DUCAT•UNIT•RUNE'].amount).toBe('2000')
+        expect(result.runes!['DUCAT•UNIT•RUNE'].id).toBe('1527352:1')
       })
 
       it('should parse output without runes', async () => {
@@ -569,7 +569,7 @@ describe('Real-world response parsing', () => {
       indexed: true,
       inscriptions: [],
       runes: {
-        'DUCAT•UNIT•MTNY': {
+        'DUCAT•UNIT•RUNE': {
           amount: 2000, // The ACTUAL amount - 2000, not 500!
           divisibility: 2,
           symbol: '$',
@@ -594,11 +594,11 @@ describe('Real-world response parsing', () => {
     )
 
     // The mint should see amount=2000, NOT 500
-    expect(result.runes!['DUCAT•UNIT•MTNY'].amount).toBe(2000)
+    expect(result.runes!['DUCAT•UNIT•RUNE'].amount).toBe(2000)
     expect(result.value).toBe(10000)
 
     // This is exactly what the RunesBackend should be checking
-    const receivedAmount = BigInt(result.runes!['DUCAT•UNIT•MTNY'].amount)
+    const receivedAmount = BigInt(result.runes!['DUCAT•UNIT•RUNE'].amount)
     const expectedAmount = 500n // What the quote was for
 
     // This should be the mismatch detected!

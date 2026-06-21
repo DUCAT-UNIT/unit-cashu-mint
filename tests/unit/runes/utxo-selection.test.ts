@@ -18,8 +18,8 @@ describe('UtxoSelector', () => {
   let mockOrdClient: OrdClient
   let mockEsploraClient: EsploraClient
 
-  const DUCAT_RUNE_NAME = 'DUCAT•UNIT•MTNY'
-  const DUCAT_RUNE_ID = { block: 3007902n, tx: 1n }
+  const DUCAT_RUNE_NAME = 'DUCAT•UNIT•RUNE'
+  const DUCAT_RUNE_ID = { block: 1527352n, tx: 1n }
 
   beforeEach(() => {
     mockOrdClient = {
@@ -50,7 +50,7 @@ describe('UtxoSelector', () => {
         runes: {
           [DUCAT_RUNE_NAME]: {
             amount: '1000',
-            id: '3007902:1',
+            id: '1527352:1',
           },
         },
       })
@@ -86,17 +86,17 @@ describe('UtxoSelector', () => {
         .mockResolvedValueOnce({
           transaction: 'txid1',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '500', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '500', id: '1527352:1' } },
         })
         .mockResolvedValueOnce({
           transaction: 'txid2',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '500', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '500', id: '1527352:1' } },
         })
         .mockResolvedValueOnce({
           transaction: 'txid3',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '500', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '500', id: '1527352:1' } },
         })
 
       vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
@@ -127,7 +127,7 @@ describe('UtxoSelector', () => {
       vi.mocked(mockOrdClient.getOutput).mockResolvedValue({
         transaction: 'txid1',
         value: 10000,
-        runes: { [DUCAT_RUNE_NAME]: { amount: '100', id: '3007902:1' } },
+        runes: { [DUCAT_RUNE_NAME]: { amount: '100', id: '1527352:1' } },
       })
 
       vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
@@ -155,7 +155,7 @@ describe('UtxoSelector', () => {
       vi.mocked(mockOrdClient.getOutput).mockResolvedValue({
         transaction: 'txid2',
         value: 10000,
-        runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+        runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
       })
 
       vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
@@ -188,12 +188,12 @@ describe('UtxoSelector', () => {
         .mockResolvedValueOnce({
           transaction: 'txid1',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
         })
         .mockResolvedValueOnce({
           transaction: 'txid2',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
         })
 
       // First UTXO is spent on-chain
@@ -231,7 +231,7 @@ describe('UtxoSelector', () => {
         .mockResolvedValueOnce({
           transaction: 'txid2',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
         })
 
       vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
@@ -400,7 +400,7 @@ describe('UtxoSelector', () => {
         {
           txid: 'tracked_quote_txid',
           vout: 1,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '50',
           address: 'tb1pquoteaddress',
           value: 10000,
@@ -414,7 +414,7 @@ describe('UtxoSelector', () => {
       vi.mocked(mockOrdClient.getOutput).mockResolvedValue({
         transaction: 'tracked_quote_txid',
         value: 10000,
-        runes: { [DUCAT_RUNE_NAME]: { amount: '46776', id: '3007902:1' } },
+        runes: { [DUCAT_RUNE_NAME]: { amount: '46776', id: '1527352:1' } },
       })
 
       const result = await utxoSelector.findTrackedRuneUtxos(
@@ -442,7 +442,7 @@ describe('UtxoSelector', () => {
         {
           txid: 'spent_txid',
           vout: 0,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '46776',
           address: 'tb1pquoteaddress',
           value: 10000,
@@ -480,7 +480,7 @@ describe('UtxoSelector', () => {
       vi.mocked(mockOrdClient.getOutput).mockResolvedValue({
         transaction: 'rune_txid',
         value: 10000,
-        runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+        runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
       })
 
       vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
@@ -542,7 +542,7 @@ describe('UtxoSelector', () => {
       vi.mocked(mockOrdClient.getOutput).mockResolvedValue({
         transaction: 'rune_txid',
         value: 10000,
-        runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+        runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
       })
 
       vi.mocked(mockEsploraClient.getOutspend).mockResolvedValue({ spent: false })
@@ -568,7 +568,7 @@ describe('UtxoSelector', () => {
         {
           txid: 'small_tracked_txid',
           vout: 1,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '100',
           address: 'tb1pquoteaddress',
           value: 10000,
@@ -583,12 +583,12 @@ describe('UtxoSelector', () => {
         .mockResolvedValueOnce({
           transaction: 'small_tracked_txid',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '100', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '100', id: '1527352:1' } },
         })
         .mockResolvedValueOnce({
           transaction: 'canonical_rune_txid',
           value: 10000,
-          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '3007902:1' } },
+          runes: { [DUCAT_RUNE_NAME]: { amount: '1000', id: '1527352:1' } },
         })
       vi.mocked(mockOrdClient.getAddressOutputs).mockResolvedValue({
         outputs: ['canonical_rune_txid:0'],

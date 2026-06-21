@@ -36,7 +36,7 @@ describe('MintCrypto', () => {
     mintCrypto = new MintCrypto(keyManager)
 
     // Generate a test keyset (uses upsert so safe with existing data)
-    const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+    const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
     keysetId = keyset.id
   })
 
@@ -135,7 +135,7 @@ describe('MintCrypto', () => {
 
   describe('unit checks', () => {
     it('rejects outputs that use a different unit than the input proofs', async () => {
-      const unitKeyset = await keyManager.generateKeyset('3007902:1', 'unit')
+      const unitKeyset = await keyManager.generateKeyset('1527352:1', 'unit')
 
       await expect(
         mintCrypto.ensureProofsAndOutputsUseSingleUnit([{ id: keysetId }], [{ id: unitKeyset.id }])

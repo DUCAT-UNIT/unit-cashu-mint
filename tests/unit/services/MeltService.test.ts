@@ -20,7 +20,7 @@ vi.mock('../../../src/config/env.js', () => ({
   env: {
     MIN_MELT_AMOUNT: 1,
     MAX_MELT_AMOUNT: 100000000,
-    SUPPORTED_RUNES_ARRAY: ['3007902:1'],
+    SUPPORTED_RUNES_ARRAY: ['1527352:1'],
   },
 }))
 
@@ -61,7 +61,7 @@ describe('MeltService', () => {
       expect.objectContaining({
         amount: 500,
         unit: 'unit',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         method: 'onchain',
         fee: 0,
         estimated_blocks: 1,
@@ -85,7 +85,7 @@ describe('MeltService', () => {
         id: quoteId,
         amount: 500,
         unit: 'unit',
-        rune_id: '3007902:1',
+        rune_id: '1527352:1',
         method: 'onchain',
         request: 'tb1precipient',
         fee_reserve: 0,

@@ -13,7 +13,7 @@ describe('Runestone Encoder', () => {
 
     it('should encode a single edict', () => {
       const edict: RuneEdict = {
-        id: { block: 3007902n, tx: 1n },
+        id: { block: 1527352n, tx: 1n },
         amount: 500n,
         output: 1,
       }
@@ -28,16 +28,16 @@ describe('Runestone Encoder', () => {
       const decoded = decodeRunestone(result.encodedRunestone)
       expect(decoded).not.toBeNull()
       expect(decoded!.edicts).toHaveLength(1)
-      expect(decoded!.edicts[0].id.block).toBe(3007902n)
+      expect(decoded!.edicts[0].id.block).toBe(1527352n)
       expect(decoded!.edicts[0].id.tx).toBe(1n)
       expect(decoded!.edicts[0].amount).toBe(500n)
       expect(decoded!.edicts[0].output).toBe(1n)
     })
 
-    it('should encode the DUCAT•UNIT•MTNY ID correctly', () => {
+    it('should encode the DUCAT•UNIT•RUNE ID correctly', () => {
       // This is the actual rune ID used in production
       const edict: RuneEdict = {
-        id: { block: 3007902n, tx: 1n },
+        id: { block: 1527352n, tx: 1n },
         amount: 2000n,
         output: 1,
       }
@@ -45,7 +45,7 @@ describe('Runestone Encoder', () => {
       const result = encodeRunestone({ edicts: [edict] })
       const decoded = decodeRunestone(result.encodedRunestone)
 
-      expect(decoded!.edicts[0].id.block).toBe(3007902n)
+      expect(decoded!.edicts[0].id.block).toBe(1527352n)
       expect(decoded!.edicts[0].id.tx).toBe(1n)
       expect(decoded!.edicts[0].amount).toBe(2000n)
     })
@@ -77,7 +77,7 @@ describe('Runestone Encoder', () => {
     it('should encode large amounts correctly', () => {
       // Test with amounts that require multiple varint bytes
       const edict: RuneEdict = {
-        id: { block: 3007902n, tx: 1n },
+        id: { block: 1527352n, tx: 1n },
         amount: 100000000000n, // 100 billion
         output: 1,
       }
@@ -234,7 +234,7 @@ describe('Runestone Encoder', () => {
 
     it('should roundtrip with output index 0', () => {
       const edict: RuneEdict = {
-        id: { block: 3007902n, tx: 1n },
+        id: { block: 1527352n, tx: 1n },
         amount: 500n,
         output: 0,
       }

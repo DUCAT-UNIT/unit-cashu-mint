@@ -29,7 +29,7 @@ const envSchema = z
     MINT_TAPROOT_ADDRESS: z.string().optional(), // Mint's taproot address for receiving UNIT
     MINT_TAPROOT_PUBKEY: z.string().optional(), // Mint's taproot internal pubkey (32-byte x-only key)
     MINT_SEGWIT_ADDRESS: z.string().optional(), // Mint's segwit address for fees
-    SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 3007902:1) - required if 'unit' enabled
+    SUPPORTED_RUNES: z.string().optional(), // UNIT rune ID (e.g. 1527352:1) - required if 'unit' enabled
     SUPPORTED_RUNE_NAMES: z.string().optional(), // UNIT rune display names matching SUPPORTED_RUNES order
 
     // Multi-unit support

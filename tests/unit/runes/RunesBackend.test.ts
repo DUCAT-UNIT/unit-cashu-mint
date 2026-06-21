@@ -142,7 +142,7 @@ describe('RunesBackend', () => {
         runes: {
           [DUCAT_UNIT_RUNE_NAME]: {
             amount: '500',
-            id: '3007902:1',
+            id: '1527352:1',
           },
         },
       })
@@ -169,7 +169,7 @@ describe('RunesBackend', () => {
     it('should detect the configured rune by id when the live display name differs', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: ['live_txid:1'],
-        runes_balances: [['DUCAT•UNIT•MTNY', '1', '$']],
+        runes_balances: [['DUCAT•UNIT•RUNE', '1', '$']],
       })
 
       mockOrdClient.getOutput.mockResolvedValue({
@@ -177,9 +177,9 @@ describe('RunesBackend', () => {
         value: 10000,
         spent: false,
         runes: {
-          'DUCAT•UNIT•MTNY': {
+          'DUCAT•UNIT•RUNE': {
             amount: '1',
-            id: '3007902:1',
+            id: '1527352:1',
           },
         },
       })
@@ -202,17 +202,17 @@ describe('RunesBackend', () => {
       expect(mockUtxoManager.addUtxo).toHaveBeenCalledWith(
         expect.objectContaining({
           runeAmount: 1n,
-          runeId: { block: 3007902n, tx: 1n },
+          runeId: { block: 1527352n, tx: 1n },
         })
       )
     })
 
     it('should detect live MTNY outputs when ord omits the rune id', async () => {
-      runesBackend = new RunesBackend(mockDb, '3007902:1', 'DUCAT•UNIT•MTNY')
+      runesBackend = new RunesBackend(mockDb, '1527352:1', 'DUCAT•UNIT•RUNE')
 
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: ['live_mtny_txid:1'],
-        runes_balances: [['DUCAT•UNIT•MTNY', '1', '$']],
+        runes_balances: [['DUCAT•UNIT•RUNE', '1', '$']],
       })
 
       mockOrdClient.getOutput.mockResolvedValue({
@@ -220,7 +220,7 @@ describe('RunesBackend', () => {
         value: 10000,
         spent: false,
         runes: {
-          'DUCAT•UNIT•MTNY': {
+          'DUCAT•UNIT•RUNE': {
             amount: 100,
             divisibility: 2,
             symbol: '$',
@@ -246,8 +246,8 @@ describe('RunesBackend', () => {
       expect(mockUtxoManager.addUtxo).toHaveBeenCalledWith(
         expect.objectContaining({
           runeAmount: 100n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         })
       )
     })
@@ -255,7 +255,7 @@ describe('RunesBackend', () => {
     it('should exact-match deposits by configured rune id when display name differs', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: ['wrong_txid:0', 'right_txid:1'],
-        runes_balances: [['DUCAT•UNIT•MTNY', '3', '$']],
+        runes_balances: [['DUCAT•UNIT•RUNE', '3', '$']],
       })
 
       mockOrdClient.getOutput
@@ -264,7 +264,7 @@ describe('RunesBackend', () => {
           value: 10000,
           spent: false,
           runes: {
-            'DUCAT•UNIT•MTNY': { amount: '2', id: '3007902:1' },
+            'DUCAT•UNIT•RUNE': { amount: '2', id: '1527352:1' },
           },
         })
         .mockResolvedValueOnce({
@@ -272,7 +272,7 @@ describe('RunesBackend', () => {
           value: 10000,
           spent: false,
           runes: {
-            'DUCAT•UNIT•MTNY': { amount: '1', id: '3007902:1' },
+            'DUCAT•UNIT•RUNE': { amount: '1', id: '1527352:1' },
           },
         })
 
@@ -336,7 +336,7 @@ describe('RunesBackend', () => {
         runes: {
           [DUCAT_UNIT_RUNE_NAME]: {
             amount: '500',
-            id: '3007902:1',
+            id: '1527352:1',
           },
         },
       })
@@ -370,7 +370,7 @@ describe('RunesBackend', () => {
         runes: {
           [DUCAT_UNIT_RUNE_NAME]: {
             amount: '2000', // The ACTUAL amount, not 500!
-            id: '3007902:1',
+            id: '1527352:1',
           },
         },
       })
@@ -409,7 +409,7 @@ describe('RunesBackend', () => {
         runes: {
           [DUCAT_UNIT_RUNE_NAME]: {
             amount: '500',
-            id: '3007902:1',
+            id: '1527352:1',
           },
         },
       })
@@ -427,7 +427,7 @@ describe('RunesBackend', () => {
       expect(result.confirmations).toBe(0)
     })
 
-    it('should skip UTXOs without DUCAT•UNIT•MTNY', async () => {
+    it('should skip UTXOs without DUCAT•UNIT•RUNE', async () => {
       mockOrdClient.getAddressOutputs.mockResolvedValue({
         outputs: ['other_rune:0', 'ducat_rune:1'],
         runes_balances: [
@@ -449,7 +449,7 @@ describe('RunesBackend', () => {
           transaction: 'ducat_rune',
           value: 10000,
           runes: {
-            [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '3007902:1' },
+            [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '1527352:1' },
           },
         })
 
@@ -500,7 +500,7 @@ describe('RunesBackend', () => {
           transaction: 'txid_with_runes',
           value: 10000,
           runes: {
-            [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '3007902:1' },
+            [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '1527352:1' },
           },
         })
 
@@ -529,7 +529,7 @@ describe('RunesBackend', () => {
         transaction: 'txid_valid',
         value: 10000,
         runes: {
-          [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '3007902:1' },
+          [DUCAT_UNIT_RUNE_NAME]: { amount: '500', id: '1527352:1' },
         },
       })
 
@@ -582,14 +582,14 @@ describe('RunesBackend', () => {
 
   describe('createDepositAddress', () => {
     it('should return the quote-derived taproot address', async () => {
-      const address = await runesBackend.createDepositAddress('quote123', 1000n, '3007902:1')
+      const address = await runesBackend.createDepositAddress('quote123', 1000n, '1527352:1')
 
       expect(address).toBe('tb1pquotequote123')
     })
 
     it('should return different deposit addresses for different quotes', async () => {
-      const first = await runesBackend.createDepositAddress('quote-a', 0n, '3007902:1')
-      const second = await runesBackend.createDepositAddress('quote-b', 0n, '3007902:1')
+      const first = await runesBackend.createDepositAddress('quote-a', 0n, '1527352:1')
+      const second = await runesBackend.createDepositAddress('quote-b', 0n, '1527352:1')
 
       expect(first).toBe('tb1pquotequote-a')
       expect(second).toBe('tb1pquotequote-b')
@@ -601,7 +601,7 @@ describe('RunesBackend', () => {
     it('should return balance from UtxoManager', async () => {
       mockUtxoManager.getBalance.mockResolvedValue(50000n)
 
-      const balance = await runesBackend.getBalance('3007902:1')
+      const balance = await runesBackend.getBalance('1527352:1')
 
       expect(balance).toBe(50000n)
     })
@@ -610,7 +610,7 @@ describe('RunesBackend', () => {
   describe('sendRunes', () => {
     const destination = 'tb1qrecipient123'
     const amount = 1000n
-    const runeId = '3007902:1'
+    const runeId = '1527352:1'
 
     let mockUtxoSelector: any
     let mockPsbtBuilder: any
@@ -648,7 +648,7 @@ describe('RunesBackend', () => {
           vout: 0,
           value: 10000,
           runeAmount: 1500n,
-          runeId: { block: 3007902n, tx: 1n },
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
       const mockSatUtxo = { txid: 'sat_txid', vout: 0, value: 50000 }
@@ -685,7 +685,7 @@ describe('RunesBackend', () => {
           vout: 1,
           value: 10000,
           runeAmount: 700n,
-          runeId: { block: 3007902n, tx: 1n },
+          runeId: { block: 1527352n, tx: 1n },
           accountIndex: 4242,
         },
         {
@@ -693,7 +693,7 @@ describe('RunesBackend', () => {
           vout: 0,
           value: 10000,
           runeAmount: 300n,
-          runeId: { block: 3007902n, tx: 1n },
+          runeId: { block: 1527352n, tx: 1n },
           accountIndex: 0,
         },
       ]
@@ -721,7 +721,7 @@ describe('RunesBackend', () => {
         {
           txid: 'quote_rune_txid',
           vout: 1,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '1000',
           address: 'tb1pquoteoldrow',
           value: 10000,
@@ -753,7 +753,7 @@ describe('RunesBackend', () => {
         {
           txid: 'unknown_quote_rune_txid',
           vout: 1,
-          rune_id: '3007902:1',
+          rune_id: '1527352:1',
           amount: '1000',
           address: 'tb1punknownquoteaddress',
           value: 10000,
@@ -807,7 +807,7 @@ describe('RunesBackend', () => {
           vout: 0,
           value: 10000,
           runeAmount: 1000n,
-          runeId: { block: 3007902n, tx: 1n },
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 
@@ -850,14 +850,14 @@ describe('RunesBackend', () => {
           transaction: 'txid1',
           value: 10000,
           runes: {
-            [DUCAT_UNIT_RUNE_NAME]: { amount: '1000', id: '3007902:1' },
+            [DUCAT_UNIT_RUNE_NAME]: { amount: '1000', id: '1527352:1' },
           },
         })
         .mockResolvedValueOnce({
           transaction: 'txid2',
           value: 10000,
           runes: {
-            [DUCAT_UNIT_RUNE_NAME]: { amount: '1000', id: '3007902:1' },
+            [DUCAT_UNIT_RUNE_NAME]: { amount: '1000', id: '1527352:1' },
           },
         })
 
@@ -887,7 +887,7 @@ describe('RunesBackend', () => {
 
       expect(mockUtxoManager.syncFromBlockchain).toHaveBeenCalled()
       const syncCall = mockUtxoManager.syncFromBlockchain.mock.calls[0]
-      expect(syncCall[1][0].runeId.block).toBe(3007902n) // Default ID used
+      expect(syncCall[1][0].runeId.block).toBe(1527352n) // Default ID used
     })
 
     it('should skip outputs without DUCAT runes', async () => {
@@ -923,7 +923,7 @@ describe('RunesBackend', () => {
 
   describe('estimateFee', () => {
     it('should return fixed fee estimate', async () => {
-      const fee = await runesBackend.estimateFee('tb1qtest', 1000n, '3007902:1')
+      const fee = await runesBackend.estimateFee('tb1qtest', 1000n, '1527352:1')
       expect(fee).toBe(1000)
     })
   })

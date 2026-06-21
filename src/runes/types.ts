@@ -137,14 +137,14 @@ export interface RunesWithdrawalResult {
   fee_paid: number
 }
 
-// Constants for the DUCAT•UNIT•MTNY token
+// Constants for the DUCAT•UNIT•RUNE token
 export const DUCAT_UNIT_RUNE: RuneId = {
-  block: 3007902n,
+  block: 1527352n,
   tx: 1n,
 }
 
-export const DUCAT_UNIT_RUNE_ID = '3007902:1' // String form for database queries
-export const DUCAT_UNIT_RUNE_NAME = 'DUCAT•UNIT•MTNY'
+export const DUCAT_UNIT_RUNE_ID = '1527352:1' // String form for database queries
+export const DUCAT_UNIT_RUNE_NAME = 'DUCAT•UNIT•RUNE'
 
 // Transaction constants from the app
 export const RUNES_TX_CONSTANTS = {

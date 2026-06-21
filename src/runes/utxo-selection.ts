@@ -13,7 +13,7 @@ export class UtxoSelector {
    * Find Rune UTXOs with sufficient runes (can combine multiple)
    * @param address The taproot address to search
    * @param requiredAmount Minimum rune amount needed
-   * @param runeName Name of the rune (e.g., "DUCAT•UNIT•MTNY")
+   * @param runeName Name of the rune (e.g., "DUCAT•UNIT•RUNE")
    * @param runeId Rune ID { block, tx }
    * @param spentUtxos Set of spent UTXO keys "txid:vout" to exclude
    * @returns Array of RuneUtxos or null if not found

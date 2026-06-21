@@ -75,8 +75,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 1000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 
@@ -119,8 +119,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 300n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
         {
           txid: '2'.repeat(64),
@@ -128,8 +128,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 400n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 
@@ -174,8 +174,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 1000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 
@@ -221,8 +221,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 1000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 
@@ -265,8 +265,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 1000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 
@@ -308,8 +308,8 @@ describe('RunesPsbtBuilder', () => {
           value: 10000,
           address: taprootAddress,
           runeAmount: 1000n,
-          runeName: 'DUCAT•UNIT•MTNY',
-          runeId: { block: 3007902n, tx: 1n },
+          runeName: 'DUCAT•UNIT•RUNE',
+          runeId: { block: 1527352n, tx: 1n },
         },
       ]
 

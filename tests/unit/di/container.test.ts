@@ -97,8 +97,8 @@ describe('DI Container', () => {
     vi.doMock('../../../src/config/env.js', () => ({
       env: {
         SUPPORTED_UNITS_ARRAY: ['unit'],
-        SUPPORTED_RUNES_ARRAY: ['3007902:1'],
-        SUPPORTED_RUNE_NAMES_ARRAY: ['DUCAT•UNIT•MTNY'],
+        SUPPORTED_RUNES_ARRAY: ['1527352:1'],
+        SUPPORTED_RUNE_NAMES_ARRAY: ['DUCAT•UNIT•RUNE'],
         SUPPORTS_BITCOIN: false,
         LIGHTNING_BACKEND: 'disabled',
       },
@@ -121,13 +121,13 @@ describe('DI Container', () => {
 
     expect(runesBackendConstructor).toHaveBeenCalledWith(
       mockDb,
-      '3007902:1',
-      'DUCAT•UNIT•MTNY'
+      '1527352:1',
+      'DUCAT•UNIT•RUNE'
     )
     expect(container.resolve<{ getRuneId: () => string | undefined }>('runesBackend').getRuneId())
-      .toBe('3007902:1')
+      .toBe('1527352:1')
     expect(container.resolve<{ getRuneName: () => string | undefined }>('runesBackend').getRuneName())
-      .toBe('DUCAT•UNIT•MTNY')
+      .toBe('DUCAT•UNIT•RUNE')
 
     vi.doUnmock('../../../src/config/env.js')
     vi.doUnmock('../../../src/database/db.js')

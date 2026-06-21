@@ -14,7 +14,7 @@ describe('KeyManager', () => {
 
   describe('generateKeyset', () => {
     it('should generate a new keyset with valid keys', async () => {
-      const runeId = '3007902:1'
+      const runeId = '1527352:1'
       const unit = 'sat'
 
       const keyset = await keyManager.generateKeyset(runeId, unit)
@@ -35,7 +35,7 @@ describe('KeyManager', () => {
     })
 
     it('should save keyset to database', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       // Verify it's in the database
       const found = await keysetRepo.findById(keyset.id)
@@ -44,7 +44,7 @@ describe('KeyManager', () => {
     })
 
     it('should encrypt private keys in database', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       // Fetch from database
       const result = await query<{ private_keys: Record<number, string> | string }>(
@@ -66,7 +66,7 @@ describe('KeyManager', () => {
 
   describe('getPrivateKey', () => {
     it('should return private key for valid amount', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       const privateKey = await keyManager.getPrivateKey(keyset.id, 8)
 
@@ -79,13 +79,13 @@ describe('KeyManager', () => {
     })
 
     it('should throw for invalid amount', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       await expect(keyManager.getPrivateKey(keyset.id, 999)).rejects.toThrow()
     })
 
     it('should throw KeysetInactiveError for inactive keyset', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
       await keyManager.deactivateKeyset(keyset.id)
 
       // Reload the keyset to get the updated inactive state
@@ -97,7 +97,7 @@ describe('KeyManager', () => {
 
   describe('getPublicKeys', () => {
     it('should return public keys in correct format', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       const mintKeys = await keyManager.getPublicKeys(keyset.id)
 
@@ -109,7 +109,7 @@ describe('KeyManager', () => {
     })
 
     it('should load keyset from database if not cached', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       // Create new KeyManager instance (empty cache)
       const newKeyManager = new KeyManager(keysetRepo)
@@ -123,7 +123,7 @@ describe('KeyManager', () => {
 
   describe('getActiveKeysets', () => {
     it('should return all active keysets', async () => {
-      await keyManager.generateKeyset('3007902:1', 'sat')
+      await keyManager.generateKeyset('1527352:1', 'sat')
       await keyManager.generateKeyset('840000:4', 'sat')
 
       const activeKeysets = await keyManager.getActiveKeysets()
@@ -133,7 +133,7 @@ describe('KeyManager', () => {
     })
 
     it('should filter by unit', async () => {
-      await keyManager.generateKeyset('3007902:1', 'sat')
+      await keyManager.generateKeyset('1527352:1', 'sat')
 
       const satKeysets = await keyManager.getActiveKeysetsByUnit('sat')
 
@@ -144,7 +144,7 @@ describe('KeyManager', () => {
 
   describe('deactivateKeyset', () => {
     it('should deactivate a keyset', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       await keyManager.deactivateKeyset(keyset.id)
 
@@ -155,7 +155,7 @@ describe('KeyManager', () => {
 
   describe('loadKeyset', () => {
     it('should load keyset into cache', async () => {
-      const keyset = await keyManager.generateKeyset('3007902:1', 'sat')
+      const keyset = await keyManager.generateKeyset('1527352:1', 'sat')
 
       // Create new instance with empty cache
       const newKeyManager = new KeyManager(keysetRepo)
@@ -170,7 +170,7 @@ describe('KeyManager', () => {
 
   describe('preloadActiveKeysets', () => {
     it('should preload all active keysets', async () => {
-      await keyManager.generateKeyset('3007902:1', 'sat')
+      await keyManager.generateKeyset('1527352:1', 'sat')
       await keyManager.generateKeyset('840000:4', 'sat')
 
       // Create new instance
