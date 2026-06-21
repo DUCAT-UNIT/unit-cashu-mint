@@ -684,17 +684,21 @@ export class MintService {
   }
 
   private defaultRuneIdForUnit(unit: string, runeId?: string): string {
-    if (runeId) {
-      return runeId
-    }
-
     if (unit === 'unit') {
-      const supportedRuneId = env.SUPPORTED_RUNES_ARRAY[0]
-      if (!supportedRuneId) {
+      const supportedRuneIds = env.SUPPORTED_RUNES_ARRAY
+      if (!supportedRuneIds.length) {
         throw new MintError('Rune ID required for unit', 20010)
       }
 
-      return supportedRuneId
+      if (runeId && !supportedRuneIds.includes(runeId)) {
+        throw new MintError(
+          'Unsupported rune ID for unit',
+          20010,
+          `rune_id=${runeId}`
+        )
+      }
+
+      return runeId ?? supportedRuneIds[0]
     }
 
     return 'btc:0'

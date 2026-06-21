@@ -144,7 +144,7 @@ async function testUnitFlow(keyset: any, keys: any) {
   console.log('🪙 TEST: UNIT (Runes) Flow - Mint → Swap → Melt')
   console.log('═'.repeat(60))
 
-  const RUNE_ID = '1527352:1'
+  const RUNE_ID = '3007902:1'
   const amount = 1000
 
   // Step 1: Create mint quote

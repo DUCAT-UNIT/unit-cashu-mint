@@ -96,7 +96,7 @@ async function main() {
 
   const { ok: ok1, data: quote } = await fetchJson('/v1/mint/quote/unit', {
     method: 'POST',
-    body: JSON.stringify({ amount: TEST_AMOUNT, unit: 'sat', rune_id: '1527352:1' }),
+    body: JSON.stringify({ amount: TEST_AMOUNT, unit: 'sat', rune_id: '3007902:1' }),
   })
 
   if (!ok1) {

@@ -127,10 +127,10 @@ describe('Error Classes', () => {
   })
 
   it('InsufficientReservesError should have correct message and detail', () => {
-    const error = new InsufficientReservesError('1527352:1', 1000, 500)
+    const error = new InsufficientReservesError('3007902:1', 1000, 500)
 
     expect(error.message).toBe('Insufficient reserves')
-    expect(error.detail).toBe('rune=1527352:1, required=1000, available=500')
+    expect(error.detail).toBe('rune=3007902:1, required=1000, available=500')
     expect(error.code).toBe(14002)
   })
 

@@ -12,7 +12,7 @@ import { randomBytes, createHash } from 'crypto'
 import * as secp256k1 from '@noble/secp256k1'
 
 const MINT_URL = process.env.MINT_URL || 'http://localhost:3000'
-const RUNE_ID = process.env.RUNE_ID || '1527352:1'
+const RUNE_ID = process.env.RUNE_ID || '3007902:1'
 const UNIT = 'sat'
 
 // Domain separator for hash_to_curve per NUT-00

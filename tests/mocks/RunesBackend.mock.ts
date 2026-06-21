@@ -108,7 +108,7 @@ export class MockRunesBackend implements IPaymentBackend {
   }
 
   async withdraw(destination: string, amount: bigint): Promise<WithdrawalResult> {
-    const runeId = this.balances.keys().next().value ?? '1527352:1'
+    const runeId = this.balances.keys().next().value ?? '3007902:1'
     return this.sendRunes(destination, amount, runeId)
   }
 
@@ -116,7 +116,7 @@ export class MockRunesBackend implements IPaymentBackend {
    * Get balance for a rune
    */
   async getBalance(runeId?: string): Promise<bigint> {
-    const resolvedRuneId = runeId ?? this.balances.keys().next().value ?? '1527352:1'
+    const resolvedRuneId = runeId ?? this.balances.keys().next().value ?? '3007902:1'
     return this.balances.get(resolvedRuneId) || 0n
   }
 

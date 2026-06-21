@@ -8,7 +8,7 @@ import { env } from '../../src/config/env.js'
 
 const TXID = '36231ef0dd5558db8888362b5668026657f50559292e6f4667d96c32d0840606'
 const VOUT = 1
-const RUNE_NAME = 'DUCAT•UNIT•RUNE'
+const RUNE_NAME = 'DUCAT•UNIT•MTNY'
 
 async function main() {
   console.log('=== Debug UNIT Deposit ===\n')

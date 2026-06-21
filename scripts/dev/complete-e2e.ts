@@ -280,7 +280,7 @@ async function main() {
   console.log('\n' + '▓'.repeat(60))
   console.log('  TESTING UNIT (RUNES) FLOW')
   console.log('▓'.repeat(60))
-  await testFlow('sat', 5269, '1527352:1')
+  await testFlow('sat', 5269, '3007902:1')
 
   // Test BTC flow with existing deposit (629769)
   console.log('\n' + '▓'.repeat(60))

@@ -14,8 +14,8 @@ async function check() {
   try {
     const output = await ordClient.getOutput(unitTxid, 1)
     console.log('UNIT Output:', JSON.stringify(output?.runes, null, 2))
-    if (output?.runes?.['DUCAT•UNIT•RUNE']) {
-      console.log('UNIT Amount:', output.runes['DUCAT•UNIT•RUNE'].amount)
+    if (output?.runes?.['DUCAT•UNIT•MTNY']) {
+      console.log('UNIT Amount:', output.runes['DUCAT•UNIT•MTNY'].amount)
     }
   } catch (e: any) {
     console.log('Error checking UNIT:', e.message)

@@ -95,7 +95,7 @@ describe('Mint Integration Tests', () => {
   let testKeysetId: string
   let testPublicKeys: Record<number, string>
 
-  const RUNE_ID = '1527352:1' // DUCAT•UNIT•RUNE
+  const RUNE_ID = '3007902:1' // DUCAT•UNIT•MTNY
   const UNIT = 'unit' // UNIT tokens, not sats!
 
   async function markMintQuotePaid(

@@ -9,7 +9,7 @@ import { secp256k1 } from '@noble/curves/secp256k1'
 const ProjectivePoint = secp256k1.ProjectivePoint
 
 const MINT_URL = process.env.MINT_URL || 'http://localhost:3000'
-const RUNE_ID = '1527352:1'
+const RUNE_ID = '3007902:1'
 
 // Use one of the 512 tokens from the swap
 const proofToMelt = {
