@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto'
 import { MintCrypto } from '../crypto/MintCrypto.js'
+import { transaction } from '../../database/db.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
 import { P2PKService } from './P2PKService.js'
@@ -10,7 +11,7 @@ import {
   MeltQuoteResponse,
   OnchainMeltQuoteResponse,
 } from '../../types/cashu.js'
-import { AmountMismatchError, hasErrorCode, MintError } from '../../utils/errors.js'
+import { AmountMismatchError, MintError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
@@ -261,20 +262,19 @@ export class MeltService {
 
     const transactionId = `melt_${quoteId}`
 
+    // Claim the quote and mark its inputs spent as a single atomic unit.
+    // The row lock plus these state predicates serialize concurrent melts:
+    // only one transaction can move the quote UNPAID -> PENDING, and the
+    // guarded INSERTs (one row per Y, guarded by Y = ANY ... FOR UPDATE)
+    // guarantee that two racing melts can never spend the same proof or pay
+    // the same request twice. A spend conflict tells the caller the proofs
+    // are gone, so the quote is rolled back to UNPAID instead of being left
+    // PENDING forever.
     try {
-      await this.quoteRepo.claimMeltQuotePending(quoteId)
-    } catch (error) {
-      if (hasErrorCode(error, '23505')) {
-        throw new MintError('Request already paid', 20006, 'Request already paid')
-      }
-
-      throw error
-    }
-
-    // 6. Mark proofs as spent after the quote has been claimed. If another
-    // request claimed this quote first, it will already be PENDING/PAID above.
-    try {
-      await this.proofRepo.markSpent(inputs, Y_values, transactionId)
+      await transaction(async (client) => {
+        await this.quoteRepo.lockAndClaimMeltQuotePending(quoteId, client)
+        await this.proofRepo.markSpentTx(inputs, Y_values, transactionId, client)
+      })
     } catch (error) {
       await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
       throw error

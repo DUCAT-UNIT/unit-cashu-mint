@@ -143,13 +143,11 @@ async function getUtxos(): Promise<UtxoRecord[]> {
 }
 
 async function getDashboardStats(): Promise<DashboardStats> {
-  // Get reserve balance
   const reserveResult = await query<{ total: string; count: string }>(
     `SELECT COALESCE(SUM(amount::BIGINT), 0)::TEXT as total, COUNT(*)::TEXT as count
      FROM mint_utxos WHERE spent = false`
   )
 
-  // Get mint quote stats
   const mintQuoteResult = await query<{ state: string; count: string }>(
     `SELECT state, COUNT(*)::TEXT as count FROM mint_quotes GROUP BY state`
   )
@@ -161,7 +159,6 @@ async function getDashboardStats(): Promise<DashboardStats> {
   }
   mintQuotes.total = mintQuotes.unpaid + mintQuotes.paid + mintQuotes.issued
 
-  // Get melt quote stats
   const meltQuoteResult = await query<{ state: string; count: string }>(
     `SELECT state, COUNT(*)::TEXT as count FROM melt_quotes GROUP BY state`
   )
@@ -173,13 +170,11 @@ async function getDashboardStats(): Promise<DashboardStats> {
   }
   meltQuotes.total = meltQuotes.unpaid + meltQuotes.pending + meltQuotes.paid
 
-  // Get proof stats
   const proofResult = await query<{ count: string; total: string }>(
     `SELECT COUNT(*)::TEXT as count, COALESCE(SUM(amount), 0)::TEXT as total
      FROM proofs WHERE state = 'SPENT'`
   )
 
-  // Get keyset stats
   const keysetResult = await query<{ active: string; total: string }>(
     `SELECT
        SUM(CASE WHEN active = true THEN 1 ELSE 0 END)::TEXT as active,
@@ -187,13 +182,11 @@ async function getDashboardStats(): Promise<DashboardStats> {
      FROM keysets`
   )
 
-  // Get recent mints (last 10)
   const recentMintsResult = await query<{ id: string; amount: string; state: string; created_at: string }>(
     `SELECT id, amount::TEXT, state, created_at::TEXT
      FROM mint_quotes ORDER BY created_at DESC LIMIT 10`
   )
 
-  // Get recent melts (last 10)
   const recentMeltsResult = await query<{ id: string; amount: string; state: string; created_at: string }>(
     `SELECT id, amount::TEXT, state, created_at::TEXT
      FROM melt_quotes ORDER BY created_at DESC LIMIT 10`
@@ -236,37 +229,29 @@ function getDashboardHTML(): string {
   <title>Mint Dashboard</title>
   <style>
     :root {
-      /* Background */
       --bg-primary: #111015;
       --bg-secondary: #1D1C21;
       --bg-tertiary: #28272C;
       --bg-white: #FFFFFF;
 
-      /* Text */
       --text-primary: #DDDDDD;
       --text-secondary: #8E8D90;
       --text-tertiary: #666666;
       --text-inverse: #111015;
 
-      /* Brand */
       --brand-primary: #1858E4;
       --brand-secondary: #8B5CF6;
       --brand-accent: #59AA8A;
 
-      /* Semantic */
       --success: #59AA8A;
       --warning: #F5A623;
       --error: #D04C68;
       --info: #1858E4;
 
-      /* Border */
       --border-default: #28272C;
       --border-light: #333333;
-
-      /* Special */
       --bitcoin: #FFB800;
 
-      /* Spacing */
       --space-xs: 4px;
       --space-sm: 8px;
       --space-md: 16px;
@@ -274,14 +259,12 @@ function getDashboardHTML(): string {
       --space-xl: 32px;
       --space-xxl: 48px;
 
-      /* Radii */
       --radius-sm: 4px;
       --radius-md: 8px;
       --radius-lg: 12px;
       --radius-xl: 16px;
       --radius-xxl: 20px;
 
-      /* Font sizes */
       --text-xs: 12px;
       --text-sm: 14px;
       --text-md: 16px;
@@ -312,7 +295,6 @@ function getDashboardHTML(): string {
       margin: 0 auto;
     }
 
-    /* Header */
     header {
       display: flex;
       justify-content: space-between;
@@ -381,7 +363,6 @@ function getDashboardHTML(): string {
       50% { opacity: 0.5; }
     }
 
-    /* Grid layouts */
     .grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -396,7 +377,6 @@ function getDashboardHTML(): string {
       margin-bottom: var(--space-lg);
     }
 
-    /* Cards */
     .card {
       background: var(--bg-secondary);
       border: 1px solid var(--border-default);
@@ -447,7 +427,6 @@ function getDashboardHTML(): string {
       color: var(--text-tertiary);
     }
 
-    /* Section titles */
     .section-title {
       font-size: var(--text-sm);
       font-weight: 600;
@@ -458,7 +437,6 @@ function getDashboardHTML(): string {
       gap: var(--space-sm);
     }
 
-    /* Quote stats */
     .quote-stats {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -489,7 +467,6 @@ function getDashboardHTML(): string {
     .state-paid, .state-pending { color: var(--brand-primary); }
     .state-issued { color: var(--success); }
 
-    /* Tables */
     .table-card {
       grid-column: span 2;
     }
@@ -520,7 +497,6 @@ function getDashboardHTML(): string {
       background: var(--bg-tertiary);
     }
 
-    /* Badges */
     .badge {
       display: inline-block;
       padding: var(--space-xs) 10px;
@@ -535,7 +511,6 @@ function getDashboardHTML(): string {
     .badge-pending { background: rgba(139, 92, 246, 0.15); color: var(--brand-secondary); }
     .badge-issued { background: rgba(89, 170, 138, 0.15); color: var(--success); }
 
-    /* Utility classes */
     .mono {
       font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
       font-size: var(--text-xs);
@@ -552,7 +527,6 @@ function getDashboardHTML(): string {
       font-size: var(--text-xs);
     }
 
-    /* Footer */
     .footer {
       margin-top: var(--space-xl);
       padding-top: var(--space-lg);
@@ -588,7 +562,6 @@ function getDashboardHTML(): string {
       to { transform: rotate(360deg); }
     }
 
-    /* Tabs */
     .tabs {
       display: flex;
       gap: var(--space-sm);
@@ -627,7 +600,6 @@ function getDashboardHTML(): string {
       display: block;
     }
 
-    /* Links */
     a {
       color: var(--brand-primary);
       text-decoration: none;
@@ -637,7 +609,6 @@ function getDashboardHTML(): string {
       text-decoration: underline;
     }
 
-    /* External link icon */
     .external-link {
       display: inline-flex;
       align-items: center;
@@ -649,7 +620,6 @@ function getDashboardHTML(): string {
       font-size: 10px;
     }
 
-    /* Responsive */
     @media (max-width: 1200px) {
       .grid { grid-template-columns: repeat(2, 1fr); }
     }
@@ -826,7 +796,7 @@ function getDashboardHTML(): string {
         <div class="card-detail">Bitcoin network</div>
       </div>
     </div>
-    </div><!-- end tab-overview -->
+    </div>
 
     <div id="tab-utxos" class="tab-content">
       <div class="card">
@@ -846,7 +816,7 @@ function getDashboardHTML(): string {
           </tbody>
         </table>
       </div>
-    </div><!-- end tab-utxos -->
+    </div>
 
     <footer class="footer">
       <div>Cashu Mint Dashboard v1.0</div>
@@ -863,7 +833,6 @@ function getDashboardHTML(): string {
       return n.toLocaleString();
     }
 
-    // Format UNIT amounts (already in smallest units, display as integer)
     function formatUnit(n) {
       if (typeof n === 'string') n = parseInt(n) || 0;
       return n.toLocaleString();
@@ -891,12 +860,59 @@ function getDashboardHTML(): string {
     }
 
     function getBadgeClass(state) {
-      return 'badge badge-' + state.toLowerCase();
+      return 'badge badge-' + String(state).toLowerCase();
     }
 
     function truncateId(id) {
-      if (id.length <= 12) return id;
+      if (!id || id.length <= 12) return id || '';
       return id.slice(0, 6) + '...' + id.slice(-4);
+    }
+
+    function renderEmptyRow(tbody, message, colspan) {
+      tbody.textContent = '';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = colspan;
+      td.style.textAlign = 'center';
+      td.style.color = 'var(--text-tertiary)';
+      td.textContent = message;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+
+    function renderQuoteRows(tbody, items, emptyMessage) {
+      if (!items || items.length === 0) {
+        renderEmptyRow(tbody, emptyMessage, 4);
+        return;
+      }
+      tbody.textContent = '';
+      for (const item of items) {
+        const tr = document.createElement('tr');
+
+        const tdId = document.createElement('td');
+        tdId.className = 'mono';
+        tdId.textContent = truncateId(String(item.id || ''));
+        tr.appendChild(tdId);
+
+        const tdAmount = document.createElement('td');
+        tdAmount.className = 'amount';
+        tdAmount.textContent = formatUnit(item.amount) + ' UNIT';
+        tr.appendChild(tdAmount);
+
+        const tdState = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = getBadgeClass(item.state);
+        badge.textContent = String(item.state || '');
+        tdState.appendChild(badge);
+        tr.appendChild(tdState);
+
+        const tdTime = document.createElement('td');
+        tdTime.className = 'time-ago';
+        tdTime.textContent = timeAgo(Number(item.created_at) || 0);
+        tr.appendChild(tdTime);
+
+        tbody.appendChild(tr);
+      }
     }
 
     async function fetchStats() {
@@ -905,13 +921,11 @@ function getDashboardHTML(): string {
         const res = await fetch('/admin/stats');
         const data = await res.json();
 
-        // Update header
         document.getElementById('mintName').textContent = data.mintName;
         document.getElementById('network').textContent = data.network.toUpperCase() + ' Network';
         document.getElementById('uptime').textContent = formatUptime(data.uptime);
         document.getElementById('runeId').textContent = data.runeId;
 
-        // Update cards (amounts are in smallest unit, divide by 100 for UNIT display)
         document.getElementById('totalReserve').textContent = formatUnit(data.totalReserve);
         document.getElementById('utxoCount').textContent = formatNumber(data.utxoCount);
         document.getElementById('totalMints').textContent = formatNumber(data.mintQuotes.total);
@@ -921,7 +935,6 @@ function getDashboardHTML(): string {
         document.getElementById('totalProofs').textContent = formatNumber(data.totalProofsSpent);
         document.getElementById('totalSpentAmount').textContent = formatUnit(data.totalAmountSpent);
 
-        // Update quote stats
         document.getElementById('mintUnpaid').textContent = formatNumber(data.mintQuotes.unpaid);
         document.getElementById('mintPaid').textContent = formatNumber(data.mintQuotes.paid);
         document.getElementById('mintIssued').textContent = formatNumber(data.mintQuotes.issued);
@@ -929,41 +942,12 @@ function getDashboardHTML(): string {
         document.getElementById('meltPending').textContent = formatNumber(data.meltQuotes.pending);
         document.getElementById('meltPaid').textContent = formatNumber(data.meltQuotes.paid);
 
-        // Update keysets
         document.getElementById('activeKeysets').textContent = formatNumber(data.activeKeysets);
         document.getElementById('totalKeysets').textContent = formatNumber(data.totalKeysets);
         document.getElementById('networkDisplay').textContent = data.network.toUpperCase();
 
-        // Update recent mints table
-        const mintsBody = document.getElementById('recentMints');
-        if (data.recentMints.length === 0) {
-          mintsBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-tertiary);">No mint quotes yet</td></tr>';
-        } else {
-          mintsBody.innerHTML = data.recentMints.map(m =>
-            '<tr>' +
-              '<td class="mono">' + truncateId(m.id) + '</td>' +
-              '<td class="amount">' + formatUnit(m.amount) + ' UNIT</td>' +
-              '<td><span class="' + getBadgeClass(m.state) + '">' + m.state + '</span></td>' +
-              '<td class="time-ago">' + timeAgo(m.created_at) + '</td>' +
-            '</tr>'
-          ).join('');
-        }
-
-        // Update recent melts table
-        const meltsBody = document.getElementById('recentMelts');
-        if (data.recentMelts.length === 0) {
-          meltsBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-tertiary);">No melt quotes yet</td></tr>';
-        } else {
-          meltsBody.innerHTML = data.recentMelts.map(m =>
-            '<tr>' +
-              '<td class="mono">' + truncateId(m.id) + '</td>' +
-              '<td class="amount">' + formatUnit(m.amount) + ' UNIT</td>' +
-              '<td><span class="' + getBadgeClass(m.state) + '">' + m.state + '</span></td>' +
-              '<td class="time-ago">' + timeAgo(m.created_at) + '</td>' +
-            '</tr>'
-          ).join('');
-        }
-
+        renderQuoteRows(document.getElementById('recentMints'), data.recentMints, 'No mint quotes yet');
+        renderQuoteRows(document.getElementById('recentMelts'), data.recentMelts, 'No melt quotes yet');
       } catch (err) {
         console.error('Failed to fetch stats:', err);
       } finally {
@@ -971,62 +955,80 @@ function getDashboardHTML(): string {
       }
     }
 
-    // Tab switching
     let currentTab = 'overview';
     let utxosLoaded = false;
 
     function showTab(tabName) {
       currentTab = tabName;
-
-      // Update tab buttons
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       event.target.classList.add('active');
 
-      // Update tab content
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       document.getElementById('tab-' + tabName).classList.add('active');
 
-      // Load UTXOs on first visit
       if (tabName === 'utxos' && !utxosLoaded) {
         fetchUtxos();
         utxosLoaded = true;
       }
     }
 
-    // Fetch UTXOs
     async function fetchUtxos() {
       const utxosBody = document.getElementById('utxosList');
-      utxosBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-tertiary);">Loading...</td></tr>';
+      renderEmptyRow(utxosBody, 'Loading...', 5);
 
       try {
         const res = await fetch('/admin/utxos');
         const utxos = await res.json();
 
-        if (utxos.length === 0) {
-          utxosBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-tertiary);">No UTXOs found</td></tr>';
+        if (!utxos || utxos.length === 0) {
+          renderEmptyRow(utxosBody, 'No UTXOs found', 5);
         } else {
-          utxosBody.innerHTML = utxos.map(u => {
-            const outpoint = u.txid + ':' + u.vout;
-            const explorerUrl = 'https://ord-mutinynet.ducatprotocol.com/output/' + outpoint;
-            return '<tr>' +
-              '<td class="mono">' + u.txid.slice(0, 8) + '...' + u.txid.slice(-4) + ':' + u.vout + '</td>' +
-              '<td class="amount">' + formatUnit(u.amount) + ' UNIT</td>' +
-              '<td>' + formatNumber(u.value) + '</td>' +
-              '<td class="time-ago">' + timeAgo(u.created_at) + '</td>' +
-              '<td><a href="' + explorerUrl + '" target="_blank" rel="noopener" class="external-link">View</a></td>' +
-            '</tr>';
-          }).join('');
+          utxosBody.textContent = '';
+          for (const u of utxos) {
+            const tr = document.createElement('tr');
+
+            const tdOut = document.createElement('td');
+            tdOut.className = 'mono';
+            const txid = String(u.txid || '');
+            tdOut.textContent = (txid.length > 12 ? txid.slice(0, 8) + '...' + txid.slice(-4) : txid) + ':' + u.vout;
+            tr.appendChild(tdOut);
+
+            const tdAmount = document.createElement('td');
+            tdAmount.className = 'amount';
+            tdAmount.textContent = formatUnit(u.amount) + ' UNIT';
+            tr.appendChild(tdAmount);
+
+            const tdVal = document.createElement('td');
+            tdVal.textContent = formatNumber(u.value);
+            tr.appendChild(tdVal);
+
+            const tdTime = document.createElement('td');
+            tdTime.className = 'time-ago';
+            tdTime.textContent = timeAgo(Number(u.created_at) || 0);
+            tr.appendChild(tdTime);
+
+            const tdExp = document.createElement('td');
+            const link = document.createElement('a');
+            const outpoint = encodeURIComponent(String(u.txid || '')) + ':' + encodeURIComponent(String(u.vout ?? 0));
+            link.href = 'https://ord-mutinynet.ducatprotocol.com/output/' + outpoint;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'external-link';
+            link.textContent = 'View';
+            tdExp.appendChild(link);
+            tr.appendChild(tdExp);
+
+            utxosBody.appendChild(tr);
+          }
         }
       } catch (err) {
         console.error('Failed to fetch UTXOs:', err);
-        utxosBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--error);">Failed to load UTXOs</td></tr>';
+        renderEmptyRow(utxosBody, 'Failed to load UTXOs', 5);
       }
     }
 
-    // Initial fetch
     fetchStats();
 
-    // Auto refresh every 10 seconds
     let countdown = 10;
     setInterval(() => {
       countdown--;
@@ -1034,7 +1036,6 @@ function getDashboardHTML(): string {
       if (countdown <= 0) {
         countdown = 10;
         fetchStats();
-        // Also refresh UTXOs if on that tab
         if (currentTab === 'utxos') {
           fetchUtxos();
         }
