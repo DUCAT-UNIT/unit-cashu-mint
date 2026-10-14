@@ -305,7 +305,11 @@ export class QuoteRepository {
   }
 
   async lockAndClaimMeltQuotePending(id: string, client?: pg.PoolClient): Promise<MeltQuote> {
-    const runQuery = client ? client.query.bind(client) : query
+    // Ensure SELECT FOR UPDATE and subsequent UPDATE always run within the same transaction context
+    if (!client) {
+      return transaction((tx) => this.lockAndClaimMeltQuotePending(id, tx))
+    }
+    const runQuery = client.query.bind(client)
     const result = await runQuery<MeltQuoteRow>(
       'SELECT * FROM melt_quotes WHERE id = $1 FOR UPDATE',
       [id]
