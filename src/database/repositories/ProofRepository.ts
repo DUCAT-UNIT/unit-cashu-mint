@@ -11,23 +11,16 @@ export class ProofRepository {
    * Returns array of Y values that are already spent
    */
   async checkSpent(Y_values: string[], client?: pg.PoolClient): Promise<string[]> {
-    if (client) {
-      const result = await client.query<{ y: string }>(
-        `SELECT Y FROM proofs WHERE Y = ANY($1) AND state != 'UNSPENT'`,
-        [Y_values]
-      )
-      return result.rows.map((r: { y: string }) => r.y)
-    } else {
-      const result = await query<{ y: string }>(
-        `SELECT Y FROM proofs WHERE Y = ANY($1) AND state != 'UNSPENT'`,
-        [Y_values]
-      )
-      return result.rows.map((r: { y: string }) => r.y)
-    }
+    const runQuery = client ? client.query.bind(client) : query
+    const result = await runQuery<{ y: string }>(
+      `SELECT Y FROM proofs WHERE Y = ANY($1) AND state != 'UNSPENT'`,
+      [Y_values]
+    )
+    return result.rows.map((r: { y: string }) => r.y)
   }
 
   /**
-   * Mark proofs as spent atomically
+   * Mark proofs as spent atomically supporting transactional clients
    * Throws if any proof is already spent
    */
   async markSpent(
@@ -36,44 +29,7 @@ export class ProofRepository {
     transactionId: string
   ): Promise<void> {
     await transaction(async (client) => {
-      // Check if any are already spent
-      const spent = await this.checkSpent(Y_values, client)
-      if (spent.length > 0) {
-        throw new ProofAlreadySpentError(spent[0])
-      }
-
-      // Insert all proofs as spent
-      const values = proofs.map((p, i) => ({
-        Y: Y_values[i],
-        keyset_id: p.id,
-        amount: p.amount,
-        secret: p.secret,
-        C: p.C,
-        witness: p.witness ? JSON.stringify(p.witness) : null,
-        state: 'SPENT',
-        spent_at: Date.now(),
-        transaction_id: transactionId,
-      }))
-
-      for (const v of values) {
-        await client.query(
-          `
-          INSERT INTO proofs (Y, keyset_id, amount, secret, C, witness, state, spent_at, transaction_id)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `,
-          [
-            v.Y,
-            v.keyset_id,
-            v.amount,
-            v.secret,
-            v.C,
-            v.witness,
-            v.state,
-            v.spent_at,
-            v.transaction_id,
-          ]
-        )
-      }
+      await this.markSpentTx(proofs, Y_values, transactionId, client)
     })
 
     for (const Y of Y_values) {
@@ -82,6 +38,57 @@ export class ProofRepository {
         state: 'SPENT',
         witness: null,
       })
+    }
+  }
+
+  /**
+   * Mark proofs as spent using an explicit transaction client
+   */
+  async markSpentTx(
+    proofs: Proof[],
+    Y_values: string[],
+    transactionId: string,
+    client?: pg.PoolClient
+  ): Promise<void> {
+    const runQuery = client ? client.query.bind(client) : query
+
+    // Check if any are already spent using the provided client
+    const spent = await this.checkSpent(Y_values, client)
+    if (spent.length > 0) {
+      throw new ProofAlreadySpentError(spent[0])
+    }
+
+    // Insert all proofs as spent
+    const values = proofs.map((p, i) => ({
+      Y: Y_values[i],
+      keyset_id: p.id,
+      amount: p.amount,
+      secret: p.secret,
+      C: p.C,
+      witness: p.witness ? JSON.stringify(p.witness) : null,
+      state: 'SPENT',
+      spent_at: Date.now(),
+      transaction_id: transactionId,
+    }))
+
+    for (const v of values) {
+      await runQuery(
+        `
+        INSERT INTO proofs (Y, keyset_id, amount, secret, C, witness, state, spent_at, transaction_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          v.Y,
+          v.keyset_id,
+          v.amount,
+          v.secret,
+          v.C,
+          v.witness,
+          v.state,
+          v.spent_at,
+          v.transaction_id,
+        ]
+      )
     }
   }
 
@@ -145,8 +152,6 @@ export class ProofRepository {
 
   /**
    * Check state of proofs by Y values (NUT-07)
-   * Returns array of {Y, state, witness} for each Y value
-   * If Y is not found in database, state is 'UNSPENT'
    */
   async checkState(Y_values: string[]): Promise<Array<{ Y: string; state: string; witness: string | null }>> {
     if (Y_values.length === 0) {
@@ -158,10 +163,8 @@ export class ProofRepository {
       [Y_values]
     )
 
-    // Create a map of found proofs
     const foundMap = new Map(result.rows.map(r => [r.y, { state: r.state, witness: r.witness }]))
 
-    // Return results in same order as input, with UNSPENT for missing Y values
     return Y_values.map(Y => ({
       Y,
       state: foundMap.get(Y)?.state || 'UNSPENT',
@@ -171,13 +174,12 @@ export class ProofRepository {
 
   /**
    * Delete proofs by transaction ID (to revert a failed melt)
-   * This effectively marks them as unspent since they won't be in the database
    */
   async deleteByTransactionId(transactionId: string): Promise<number> {
     const result = await query(
       'DELETE FROM proofs WHERE transaction_id = $1',
       [transactionId]
     )
-    return result.rowCount || 0
+    return result.rowCount ?? 0
   }
 }

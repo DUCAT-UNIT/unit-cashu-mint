@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto'
 import { MintCrypto } from '../crypto/MintCrypto.js'
+import { transaction } from '../../database/db.js'
 import { QuoteRepository } from '../../database/repositories/QuoteRepository.js'
 import { ProofRepository } from '../../database/repositories/ProofRepository.js'
 import { P2PKService } from './P2PKService.js'
@@ -10,7 +11,7 @@ import {
   MeltQuoteResponse,
   OnchainMeltQuoteResponse,
 } from '../../types/cashu.js'
-import { AmountMismatchError, hasErrorCode, MintError } from '../../utils/errors.js'
+import { AmountMismatchError, MintError } from '../../utils/errors.js'
 import { logger } from '../../utils/logger.js'
 import { env } from '../../config/env.js'
 import { BackendRegistry } from '../payment/BackendRegistry.js'
@@ -61,12 +62,6 @@ export class MeltService {
 
     // Generate quote ID
     const quoteId = randomBytes(32).toString('hex')
-
-    // Amount is already in smallest units (integer)
-
-    // For UNIT mints, we don't charge a fee in Cashu tokens
-    // The mint pays the BTC network fee itself
-    // Optional: Set a small service fee in UNIT (e.g., 1-2 UNIT)
 
     // Set expiry (1 hour from now for melts)
     const expiry = Math.floor(Date.now() / 1000) + 60 * 60
@@ -261,22 +256,17 @@ export class MeltService {
 
     const transactionId = `melt_${quoteId}`
 
+    // Claim the quote and mark its inputs spent as a single atomic unit using a transaction client.
+    // Transaction rollback handles safety; we map uniqueness violations without overwriting concurrent winners.
     try {
-      await this.quoteRepo.claimMeltQuotePending(quoteId)
-    } catch (error) {
-      if (hasErrorCode(error, '23505')) {
+      await transaction(async (client) => {
+        await this.quoteRepo.lockAndClaimMeltQuotePending(quoteId, client)
+        await this.proofRepo.markSpentTx(inputs, Y_values, transactionId, client)
+      })
+    } catch (error: any) {
+      if (error.code === '23505' || (error.message && error.message.includes('duplicate key'))) {
         throw new MintError('Request already paid', 20006, 'Request already paid')
       }
-
-      throw error
-    }
-
-    // 6. Mark proofs as spent after the quote has been claimed. If another
-    // request claimed this quote first, it will already be PENDING/PAID above.
-    try {
-      await this.proofRepo.markSpent(inputs, Y_values, transactionId)
-    } catch (error) {
-      await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
       throw error
     }
 
@@ -396,15 +386,14 @@ export class MeltService {
 
     return {
       state: 'PAID',
-      paid: true, // NUT-05: paid field indicates successful payment
-      payment_preimage: result.txid, // Transaction ID as payment proof
+      paid: true,
+      payment_preimage: result.txid,
       change,
     }
   }
 
   /**
    * Complete a melt after Runes withdrawal succeeds
-   * This would be called by the Runes backend monitoring service
    */
   async completeMelt(quoteId: string, txid: string): Promise<void> {
     await this.quoteRepo.updateMeltQuoteState(quoteId, 'PAID', txid)
@@ -413,11 +402,8 @@ export class MeltService {
 
   /**
    * Fail a melt if Runes withdrawal fails
-   * This would be called by the Runes backend monitoring service
    */
   async failMelt(quoteId: string): Promise<void> {
-    // In production, we'd need to handle refunds here
-    // For now, just mark as failed
     await this.quoteRepo.updateMeltQuoteState(quoteId, 'UNPAID')
     logger.error({ quoteId }, 'Melt failed - withdrawal unsuccessful')
   }
@@ -458,8 +444,6 @@ export class MeltService {
     }
 
     const denominations = this.splitAmount(changeAmount)
-    // NUT-08 change outputs are blanks from the wallet; derive the actual
-    // denominations from the settled payment instead of trusting output.amount.
     const selectedDenominations = denominations.slice(0, outputs.length)
 
     const changeOutputs = selectedDenominations.map((amount, index) => ({

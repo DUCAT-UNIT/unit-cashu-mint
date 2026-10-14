@@ -304,31 +304,34 @@ export class QuoteRepository {
     return quote
   }
 
-  async claimMeltQuotePending(id: string): Promise<MeltQuote> {
-    return transaction(async (client) => {
-      const result = await client.query<MeltQuoteRow>(
-        'SELECT * FROM melt_quotes WHERE id = $1 FOR UPDATE',
-        [id]
-      )
+  async lockAndClaimMeltQuotePending(id: string, client?: pg.PoolClient): Promise<MeltQuote> {
+    // Ensure SELECT FOR UPDATE and subsequent UPDATE always run within the same transaction context
+    if (!client) {
+      return transaction((tx) => this.lockAndClaimMeltQuotePending(id, tx))
+    }
+    const runQuery = client.query.bind(client)
+    const result = await runQuery<MeltQuoteRow>(
+      'SELECT * FROM melt_quotes WHERE id = $1 FOR UPDATE',
+      [id]
+    )
 
-      if (result.rows.length === 0) {
-        throw new QuoteNotFoundError(id)
-      }
+    if (result.rows.length === 0) {
+      throw new QuoteNotFoundError(id)
+    }
 
-      const quote = meltQuoteFromRow(result.rows[0])
-      if (quote.state === 'PAID') {
-        throw new MintError('Request already paid', 20006, 'Request already paid')
-      }
-      if (quote.state === 'PENDING') {
-        throw new MintError('Quote is pending', 20005, 'Quote is pending')
-      }
+    const quote = meltQuoteFromRow(result.rows[0])
+    if (quote.state === 'PAID') {
+      throw new MintError('Request already paid', 20006, 'Request already paid')
+    }
+    if (quote.state === 'PENDING') {
+      throw new MintError('Quote is pending', 20005, 'Quote is pending')
+    }
 
-      await client.query('UPDATE melt_quotes SET state = $1 WHERE id = $2', ['PENDING', id])
-      return {
-        ...quote,
-        state: 'PENDING',
-      }
-    })
+    await runQuery('UPDATE melt_quotes SET state = $1 WHERE id = $2', ['PENDING', id])
+    return {
+      ...quote,
+      state: 'PENDING',
+    }
   }
 
   async findSettledMeltQuoteByRequest(
