@@ -125,7 +125,7 @@ export class KeyManager {
         this.keysetCache.set(keysetId, keyset)
 
         logger.debug({ keysetId }, 'Keyset loaded from database into cache')
-      } catch (error) {
+      } catch {
         throw new KeysetNotFoundError(keysetId)
       }
     }

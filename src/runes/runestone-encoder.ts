@@ -190,7 +190,7 @@ export function decodeRunestone(script: Buffer | string): DecodedRunestone | nul
     }
 
     return { edicts }
-  } catch (error) {
+  } catch {
     return null
   }
 }
